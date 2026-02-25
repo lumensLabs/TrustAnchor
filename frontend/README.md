@@ -81,7 +81,85 @@ frontend/
 └── README.md
 ```
 
-## Features
+## Theme System
+
+The application supports full dark mode with the following features:
+
+### Features
+- **Class-based dark mode**: Uses Tailwind's `dark:` prefix for theme switching
+- **System preference detection**: Automatically detects user's OS theme preference on first visit
+- **User toggle**: Theme switch component allows manual theme selection (light/dark/system)
+- **Persistence**: User preference is saved to localStorage
+- **Smooth transitions**: 300ms ease transition between themes
+- **Semantic color tokens**: Uses CSS custom properties for consistent theming
+- **Accessibility**: High contrast ratios and proper focus states
+
+### Usage
+
+#### Using the Theme Hook
+```tsx
+import { useTheme } from '@/app/components/providers/ThemeProvider'
+
+function MyComponent() {
+  const { theme, setTheme, resolvedTheme } = useTheme()
+  
+  // theme: 'light' | 'dark' | 'system'
+  // resolvedTheme: 'light' | 'dark' (actual applied theme)
+  
+  return (
+    <button onClick={() => setTheme('dark')}>
+      Switch to Dark
+    </button>
+  )
+}
+```
+
+#### Theme Toggle Component
+```tsx
+import { ThemeToggle } from '@/app/components/global_ui/ThemeToggle'
+
+function Header() {
+  return (
+    <header>
+      <ThemeToggle />
+    </header>
+  )
+}
+```
+
+#### Styling with Semantic Colors
+```tsx
+// Use semantic color classes instead of hardcoded colors
+<div className="bg-background text-foreground">
+  <button className="bg-primary text-primary-foreground hover:bg-primary/90">
+    Primary Button
+  </button>
+</div>
+```
+
+### Color Tokens
+
+The theme system defines the following semantic color tokens:
+
+- `background` / `foreground`: Main background and text colors
+- `primary` / `primary-foreground`: Primary actions and buttons
+- `secondary` / `secondary-foreground`: Secondary elements
+- `muted` / `muted-foreground`: Subtle text and backgrounds
+- `accent` / `accent-foreground`: Highlighted elements
+- `destructive` / `destructive-foreground`: Error states
+- `border`: Border colors
+- `input`: Form input backgrounds
+- `ring`: Focus ring colors
+
+### Implementation Details
+
+- **Provider**: `ThemeProvider` wraps the app and manages theme state
+- **Storage**: Preferences saved to `localStorage` with key `'theme'`
+- **Detection**: Uses `window.matchMedia('(prefers-color-scheme: dark)')`
+- **CSS**: Custom properties defined in `globals.css` with `.dark` class overrides
+- **Tailwind**: Configured with `darkMode: 'class'` in CSS `@config`
+
+### Planned Features
 
 ### Current Features
 
@@ -90,6 +168,7 @@ frontend/
 - Loading states with spinner component
 - SEO optimization with metadata
 - Custom 404 page
+- **Dark mode support** with system preference detection and user toggle
 
 ### Planned Features
 
