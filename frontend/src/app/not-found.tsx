@@ -5,15 +5,15 @@ export default function NotFound() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground px-4">
       <div className="text-center space-y-6 max-w-md mx-auto">
         {/* Large 404 Text/Icon */}
-        <h1 className="text-9xl font-bold text-gray-200 dark:text-gray-800 select-none">
+        <h1 className="text-9xl font-bold text-muted select-none">
           404
         </h1>
-        
+
         <div className="-mt-16 relative z-10">
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl text-foreground">
             Page not found
           </h2>
-          <p className="mt-4 text-gray-600 dark:text-gray-400 text-lg">
+          <p className="mt-4 text-muted-foreground text-lg">
             Sorry, we couldn't find the page you're looking for. It might have been removed or renamed.
           </p>
         </div>
@@ -21,7 +21,7 @@ export default function NotFound() {
         <div className="pt-8">
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-lg bg-foreground text-background px-8 py-3 text-sm font-medium transition-transform hover:scale-105 hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-foreground focus:ring-offset-2 dark:focus:ring-offset-background"
+            className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-8 py-3 text-sm font-medium transition-transform hover:scale-105 hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           >
             Return Home
           </Link>
