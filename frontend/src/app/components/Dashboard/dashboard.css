@@ -1,0 +1,14 @@
+/* Dashboard.css */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .dashboard {
+    flex-direction: row;
+  }
+  .dashboard aside {
+    width: 250px;
+  }
+}
