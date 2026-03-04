@@ -8,7 +8,15 @@
 
 RemitLend treats remittance history as credit history. Migrant workers prove their financial reliability through monthly cross-border transfers, allowing them to receive fair loans without predatory fees. In return, lenders earn transparent yield powered by the Stellar network.
 
-## ✨ Key Features
+## Overview
+
+Billions of migrant workers send money home regularly, yet lack access to formal credit. RemitLend bridges this gap by converting verifiable remittance patterns into on-chain credit scores, minted as NFTs and used as collateral for decentralized loans.
+
+- **Borrowers** submit remittance history → receive a credit score NFT → use it to access loans
+- **Lenders** deposit liquidity into shared pools → earn yield from loan interest
+- **All loan terms, collateral, and repayments** are recorded on the Stellar blockchain
+
+## Key Features
 
 ### For Borrowers
 - **Credit Building**: Convert your existing remittance history into an actionable credit score.
@@ -24,35 +32,45 @@ RemitLend treats remittance history as credit history. Migrant workers prove the
 - **Decentralized Lending Pools**: Lenders provide liquidity and earn transparent yields.
 - **Transparent & Auditable**: All transactions and loan terms recorded on-chain.
 
-## 🏗 Project Structure
+## Project Structure
 
 The repository is organized as a monorepo containing three core packages:
 
-- **`backend/`**: Node.js/Express server providing API support, score generation, and metadata management.
-- **`frontend/`**: Next.js web application providing the UI for both borrowers and lenders.
-- **`contracts/`**: Soroban (Rust) smart contracts covering the lending pools, loan management, and NFT collateral logic.
+```
+TrustAnchor/
+├── frontend/          # Next.js web application (UI for borrowers and lenders)
+├── backend/           # Node.js/Express API (credit scoring, metadata, validation)
+├── contracts/         # Soroban smart contracts (NFT, loan manager, lending pool)
+├── docker-compose.yml # Local development orchestration
+├── ARCHITECTURE.md    # Detailed system architecture and diagrams
+├── CONTRIBUTING.md    # Contribution guidelines
+└── LICENSE            # ISC License
+```
 
-*For a detailed look at how these components interact, see our [Architecture Diagram](ARCHITECTURE.md).*
+For a detailed look at how these components interact, see the [Architecture Diagram](ARCHITECTURE.md).
 
-## 🛠 Tech Stack
+## Tech Stack
 
-- **Blockchain**: [Stellar](https://stellar.org) (Soroban Smart Contracts)
-- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
-- **Backend**: Node.js, Express, TypeScript, Jest
-- **Wallet Integration**: [Stellar Wallet Kit](https://github.com/stellar/stellar-wallet-kit) (Freighter)
+| Layer | Technology |
+|-------|-----------|
+| Blockchain | [Stellar](https://stellar.org) — Soroban Smart Contracts |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
+| Backend | Node.js 18+, Express.js 5, TypeScript, Zod, Swagger |
+| Wallet | [Stellar Wallet Kit](https://github.com/stellar/stellar-wallet-kit) (Freighter) |
+| Testing | Jest, Supertest, Rust test framework |
+| Containers | Docker, Docker Compose |
 
-## 🏁 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
-- [Docker & Docker Compose](https://www.docker.com/) (Recommended for easy setup)
-- [Rust & Cargo](https://rustup.rs/) (Required for contract development)
-- [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (Required for contract deployment)
-- [Stellar Wallet](https://www.stellar.org/ecosystem/wallets) (Freighter recommended for testing)
+- [Node.js](https://nodejs.org/) v18 or higher
+- [Docker & Docker Compose](https://www.docker.com/) (recommended)
+- [Rust & Cargo](https://rustup.rs/) (required for contract development)
+- [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (required for contract deployment)
+- [Freighter Wallet](https://www.freighter.app/) (recommended for testing)
 
-### Quick Start with Docker (Recommended)
+### Quick Start with Docker
 
 1. **Clone the repository:**
    ```bash
@@ -64,7 +82,6 @@ The repository is organized as a monorepo containing three core packages:
    ```bash
    cp backend/.env.example backend/.env
    ```
-   Edit `backend/.env` if needed (defaults work for local development).
 
 3. **Start all services:**
    ```bash
@@ -78,143 +95,78 @@ The repository is organized as a monorepo containing three core packages:
 
 ### Manual Setup
 
-#### Backend Setup
+#### Backend
 
-1. **Navigate to backend directory:**
-   ```bash
-   cd backend
-   ```
+```bash
+cd backend
+npm install
+cp .env.example .env
+# Edit .env as needed — defaults work for local development
+npm run dev
+```
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+Available scripts: `dev`, `build`, `start`, `test`, `lint`, `format`
 
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   ```
-   Update `.env` with your configuration:
-   ```env
-   CORS_ALLOWED_ORIGINS=http://localhost:3000
-   PORT=3001
-   NODE_ENV=development
-   ```
+#### Frontend
 
-### Manual Setup
+```bash
+cd frontend
+npm install
+npm run dev
+# Open http://localhost:3000
+```
 
-#### Backend Setup
+Available scripts: `dev`, `build`, `start`, `lint`
 
-1. **Navigate to backend directory:**
-   ```bash
-   cd backend
-   ```
+#### Smart Contracts
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+```bash
+# Install Rust wasm32 target
+rustup target add wasm32-unknown-unknown
 
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   ```
-   Update `.env` with your configuration:
-   ```env
-   CORS_ALLOWED_ORIGINS=http://localhost:3000
-   PORT=3001
-   NODE_ENV=development
-   ```
+# Install Soroban CLI
+cargo install --locked soroban-cli
 
-4. **Run development server:**
-   ```bash
-   npm run dev
-   ```
+cd contracts
 
-5. **Available scripts:**
-   - `npm run dev` - Start development server with hot reload
-   - `npm run build` - Build for production
-   - `npm start` - Run production build
-   - `npm test` - Run test suite
-   - `npm run lint` - Check code quality
-   - `npm run format` - Format code with Prettier
+# Build all contracts
+cargo build --target wasm32-unknown-unknown --release
 
-#### Frontend Setup
+# Run tests
+cargo test
 
-1. **Navigate to frontend directory:**
-   ```bash
-   cd frontend
-   ```
+# Deploy to testnet (example)
+soroban contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/remittance_nft.wasm \
+  --source <YOUR_SECRET_KEY> \
+  --rpc-url https://soroban-testnet.stellar.org \
+  --network-passphrase "Test SDF Network ; September 2015"
+```
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+## Architecture
 
-3. **Run development server:**
-   ```bash
-   npm run dev
-   ```
+RemitLend consists of three smart contracts on Stellar Soroban:
 
-4. **Access the application:**
-   Open [http://localhost:3000](http://localhost:3000) in your browser
+```
+Remittance NFT ──── stores credit score, locks as collateral
+     │
+Loan Manager ─────── manages loan lifecycle (request → approve → repay)
+     │
+Lending Pool ─────── holds lender deposits, distributes yield
+```
 
-5. **Available scripts:**
-   - `npm run dev` - Start development server
-   - `npm run build` - Build for production
-   - `npm start` - Run production build
-   - `npm run lint` - Check code quality
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system diagram, data flow sequences, security model, and entity relationships.
 
-#### Smart Contracts Setup
+## Contributing
 
-1. **Install Rust and wasm32 target:**
-   ```bash
-   rustup target add wasm32-unknown-unknown
-   ```
+We welcome contributions from developers of all skill levels. See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
-2. **Install Soroban CLI:**
-   ```bash
-   cargo install --locked soroban-cli
-   ```
-
-3. **Navigate to contracts directory:**
-   ```bash
-   cd contracts
-   ```
-
-4. **Build all contracts:**
-   ```bash
-   cargo build --target wasm32-unknown-unknown --release
-   ```
-
-5. **Run tests:**
-   ```bash
-   cargo test
-   ```
-
-6. **Deploy to testnet (example):**
-   ```bash
-   soroban contract deploy \
-     --wasm target/wasm32-unknown-unknown/release/remittance_nft.wasm \
-     --source <YOUR_SECRET_KEY> \
-     --rpc-url https://soroban-testnet.stellar.org \
-     --network-passphrase "Test SDF Network ; September 2015"
-   ```
-
-## 🤝 Contributing
-
-We welcome contributions from developers of all skill levels! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to get started.
-
-### Quick Contribution Guide
-
+**Quick guide:**
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes and commit (`git commit -m 'Add amazing feature'`)
-4. Push to your branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch (`git checkout -b feat/amazing-feature`)
+3. Make your changes and commit using [Conventional Commits](https://www.conventionalcommits.org/)
+4. Push and open a Pull Request
 
-### Quick Contribution Guide
+## License
 
-## 📄 License
-
-This project is licensed under the ISC License. See the `LICENSE` file for details.
+This project is licensed under the [ISC License](LICENSE).
