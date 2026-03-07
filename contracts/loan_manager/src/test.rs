@@ -1,13 +1,12 @@
-#![cfg(test)]
-
-use crate::{nft, LoanManager, LoanManagerClient};
+use crate::{LoanManager, LoanManagerClient};
+use remittance_nft::{RemittanceNFT, RemittanceNFTClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
-fn setup_test<'a>(env: &Env) -> (LoanManagerClient<'a>, nft::Client<'a>, Address) {
+fn setup_test<'a>(env: &Env) -> (LoanManagerClient<'a>, RemittanceNFTClient<'a>, Address) {
     // 1. Deploy the NFT score mock contract
     let admin = Address::generate(env);
-    let nft_contract_id = env.register(nft::WASM, ());
-    let nft_client = nft::Client::new(env, &nft_contract_id);
+    let nft_contract_id = env.register(RemittanceNFT, ());
+    let nft_client = RemittanceNFTClient::new(env, &nft_contract_id);
     nft_client.initialize(&admin);
 
     // 2. Deploy the LoanManager contract
@@ -25,7 +24,7 @@ fn test_loan_request_success() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (manager, nft_client, admin) = setup_test(&env);
+    let (manager, nft_client, _admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
     // Give borrower a score high enough to pass (>= 500)
@@ -42,7 +41,7 @@ fn test_loan_request_failure_low_score() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (manager, nft_client, admin) = setup_test(&env);
+    let (manager, nft_client, _admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
     // Give borrower a score too low to pass (< 500)
@@ -70,7 +69,7 @@ fn test_repayment_flow() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (manager, nft_client, admin) = setup_test(&env);
+    let (manager, nft_client, _admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
     // 1. Borrower starts with a score of 600
@@ -94,7 +93,7 @@ fn test_access_controls_unauthorized_repay() {
     let env = Env::default();
     // NOT using mock_all_auths() to enforce actual signatures
 
-    let (manager, nft_client, _admin) = setup_test(&env);
+    let (manager, _nft_client, _admin) = setup_test(&env);
     let borrower = Address::generate(&env);
 
     // Attempting to repay without proper Authorization scope should panic natively.

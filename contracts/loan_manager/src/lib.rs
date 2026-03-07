@@ -29,7 +29,7 @@ impl LoanManager {
             .get(&DataKey::NftContract)
             .expect("not initialized");
 
-        let nft_client = nft::Client::new(&env, &nft_contract);
+        let nft_client = RemittanceNFTClient::new(&env, &nft_contract);
 
         let score = nft_client.get_score(&borrower);
 
@@ -58,7 +58,7 @@ impl LoanManager {
             .get(&DataKey::NftContract)
             .expect("not initialized");
 
-        let nft_client = nft::Client::new(&env, &nft_contract);
+        let nft_client = RemittanceNFTClient::new(&env, &nft_contract);
 
         nft_client.update_score(&borrower, &amount, &None);
 
