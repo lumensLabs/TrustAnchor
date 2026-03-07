@@ -90,7 +90,7 @@ fn test_authorized_minter() {
     let admin = Address::generate(&env);
     let authorized_contract = Address::generate(&env);
 
-    let contract_id = env.register(RemittanceNFT,  ());
+    let contract_id = env.register(RemittanceNFT, ());
     let client = RemittanceNFTClient::new(&env, &contract_id);
 
     client.initialize(&admin);
