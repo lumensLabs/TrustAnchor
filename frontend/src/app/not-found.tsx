@@ -14,7 +14,7 @@ export default function NotFound() {
             Page not found
           </h2>
           <p className="mt-4 text-gray-600 dark:text-gray-400 text-lg">
-            Sorry, we couldn't find the page you're looking for. It might have been removed or renamed.
+            Sorry, we couldn&rsquo;t find the page you&rsquo;re looking for. It might have been removed or renamed.
           </p>
         </div>
 
