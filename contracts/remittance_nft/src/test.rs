@@ -87,7 +87,7 @@ fn test_authorized_minter() {
     let env = Env::default();
     env.mock_all_auths();
 
-   let admin = Address::generate(&env);
+    let admin = Address::generate(&env);
     let authorized_contract = Address::generate(&env);
 
     let contract_id = env.register(RemittanceNFT, ());
