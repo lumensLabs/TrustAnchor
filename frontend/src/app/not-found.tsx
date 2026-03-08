@@ -8,13 +8,13 @@ export default function NotFound() {
         <h1 className="text-9xl font-bold text-gray-200 dark:text-gray-800 select-none">
           404
         </h1>
-        
+
         <div className="-mt-16 relative z-10">
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl text-foreground">
             Page not found
           </h2>
           <p className="mt-4 text-gray-600 dark:text-gray-400 text-lg">
-            Sorry, we couldn't find the page you're looking for. It might have been removed or renamed.
+            Sorry, we couldn&apos;t find the page you&apos;re looking for. It might have been removed or renamed.
           </p>
         </div>
 

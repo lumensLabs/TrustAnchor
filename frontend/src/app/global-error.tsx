@@ -23,7 +23,7 @@ export default function GlobalError({
                             A Critical Error Occurred
                         </h1>
                         <p className="text-lg text-zinc-600 dark:text-zinc-400">
-                            We're sorry, but the application encountered a fatal error and could
+                            We&apos;re sorry, but the application encountered a fatal error and could
                             not continue.
                         </p>
                     </div>
