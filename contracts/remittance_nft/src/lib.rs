@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Symbol};
 
 
 #[contracttype]
@@ -30,6 +30,12 @@ impl RemittanceNFT {
         env.storage().instance().set(&DataKey::Admin, &admin);
         // Admin is automatically authorized to mint
         env.storage().instance().set(&DataKey::AuthorizedMinter(admin.clone()), &true);
+        
+        // Emit initialization event
+        env.events().publish(
+            (Symbol::new(&env, "ContractInitialized"), Symbol::new(&env, "RemittanceNFT")),
+            admin
+        );
     }
 
     /// Authorize a contract or account to mint NFTs
@@ -37,7 +43,13 @@ impl RemittanceNFT {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
         
-        env.storage().instance().set(&DataKey::AuthorizedMinter(minter), &true);
+        env.storage().instance().set(&DataKey::AuthorizedMinter(minter.clone()), &true);
+        
+        // Emit minter authorization event
+        env.events().publish(
+            (Symbol::new(&env, "MinterAuthorized"), admin),
+            minter
+        );
     }
 
     /// Revoke authorization for a contract or account to mint NFTs
@@ -45,7 +57,13 @@ impl RemittanceNFT {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
         
-        env.storage().instance().remove(&DataKey::AuthorizedMinter(minter));
+        env.storage().instance().remove(&DataKey::AuthorizedMinter(minter.clone()));
+        
+        // Emit minter revocation event
+        env.events().publish(
+            (Symbol::new(&env, "MinterRevoked"), admin),
+            minter
+        );
     }
 
     /// Check if an address is authorized to mint
@@ -82,10 +100,22 @@ impl RemittanceNFT {
 
         let metadata = RemittanceMetadata {
             score: initial_score,
-            history_hash,
+            history_hash: history_hash.clone(),
         };
         
         env.storage().persistent().set(&metadata_key, &metadata);
+        
+        // Emit NFT minted event
+        env.events().publish(
+            (Symbol::new(&env, "NFTMinted"), user.clone()),
+            (initial_score, history_hash)
+        );
+        
+        // Emit credit score established event
+        env.events().publish(
+            (Symbol::new(&env, "CreditScoreEstablished"), user),
+            initial_score
+        );
     }
 
     /// Get the metadata (score and history hash) for a user's NFT
@@ -167,9 +197,22 @@ impl RemittanceNFT {
         
         // Simple logic: 1 point per 100 units of repayment
         let points = (repayment_amount / 100) as u32;
+        let old_score = metadata.score;
         metadata.score += points;
 
         env.storage().persistent().set(&metadata_key, &metadata);
+        
+        // Emit score updated event
+        env.events().publish(
+            (Symbol::new(&env, "CreditScoreUpdated"), user.clone()),
+            (old_score, metadata.score, repayment_amount)
+        );
+        
+        // Emit repayment processed event
+        env.events().publish(
+            (Symbol::new(&env, "RepaymentProcessed"), user),
+            repayment_amount
+        );
     }
 
     /// Update the history hash for a user's NFT
@@ -211,9 +254,16 @@ impl RemittanceNFT {
             panic!("user does not have an NFT");
         };
         
-        metadata.history_hash = new_history_hash;
+        let old_hash = metadata.history_hash.clone();
+        metadata.history_hash = new_history_hash.clone();
 
         env.storage().persistent().set(&metadata_key, &metadata);
+        
+        // Emit history hash updated event
+        env.events().publish(
+            (Symbol::new(&env, "HistoryHashUpdated"), user),
+            (old_hash, new_history_hash)
+        );
     }
 }
 
