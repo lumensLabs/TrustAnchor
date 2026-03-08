@@ -52,12 +52,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown        # ← ADD THIS
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: contracts
       - name: Format check
         run: cargo fmt --all -- --check
+        working-directory: contracts
+      - name: Build remittance_nft wasm          # ← ADD THIS STEP
+        run: cargo build --target wasm32-unknown-unknown --release -p remittance_nft
         working-directory: contracts
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings

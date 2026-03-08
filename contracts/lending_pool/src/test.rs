@@ -1,12 +1,13 @@
-#![cfg(test)]
-
 use crate::{LendingPool, LendingPoolClient};
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env};
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::token::StellarAssetClient;
+use soroban_sdk::{Address, Env};
 
-fn create_token_contract<'a>(env: &Env, admin: &Address) -> (Address, StellarAssetClient<'a>, TokenClient<'a>) {
+fn create_token_contract<'a>(
+    env: &Env,
+    admin: &Address,
+) -> (Address, StellarAssetClient<'a>, TokenClient<'a>) {
     let contract_id = env.register_stellar_asset_contract_v2(admin.clone());
     let stellar_asset_client = StellarAssetClient::new(env, &contract_id.address());
     let token_client = TokenClient::new(env, &contract_id.address());
@@ -25,7 +26,7 @@ fn test_deposit_flow() {
     // 2. Setup LendingPool
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
-    
+
     // 3. Initialize LendingPool with Token
     pool_client.initialize(&token_id);
 
@@ -40,7 +41,7 @@ fn test_deposit_flow() {
     // 6. Verify Balances
     assert_eq!(token_client.balance(&provider), 2000);
     assert_eq!(token_client.balance(&pool_id), 3000);
-    
+
     // 7. Verify internal ledger states
     assert_eq!(pool_client.get_deposit(&provider), 3000);
 }
@@ -52,7 +53,8 @@ fn test_negative_deposit_panic() {
     env.mock_all_auths();
 
     let token_admin = Address::generate(&env);
-    let (token_id, _stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
+    let (token_id, _stellar_asset_client, _token_client) =
+        create_token_contract(&env, &token_admin);
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
@@ -66,7 +68,7 @@ fn test_negative_deposit_panic() {
 #[should_panic]
 fn test_deposit_unauthorized() {
     let env = Env::default();
-    
+
     let token_admin = Address::generate(&env);
     let (token_id, stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
 
@@ -75,10 +77,10 @@ fn test_deposit_unauthorized() {
     pool_client.initialize(&token_id);
 
     let provider = Address::generate(&env);
-    
+
     env.mock_all_auths();
     stellar_asset_client.mint(&provider, &5000);
-    
+
     env.mock_auths(&[]); // Reset mocked auths enforcing require_auth() natively
 
     // Should fail missing native authorizations
@@ -125,7 +127,8 @@ fn test_negative_withdraw_panic() {
     env.mock_all_auths();
 
     let token_admin = Address::generate(&env);
-    let (token_id, _stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
+    let (token_id, _stellar_asset_client, _token_client) =
+        create_token_contract(&env, &token_admin);
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
