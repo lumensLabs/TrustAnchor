@@ -1,43 +1,59 @@
 import { test as base, Page } from '@playwright/test';
 
+interface MockWallet {
+  isConnected: () => boolean;
+  getPublicKey: () => string;
+  connect: () => Promise<{ publicKey: string }>;
+  disconnect: () => Promise<void>;
+  signTransaction: (xdr: string) => Promise<string>;
+}
+
+interface ExtendedWindow extends Window {
+  mockWalletConnected?: boolean;
+  mockWalletAddress?: string;
+  stellarWallet?: MockWallet;
+}
+
 export interface WalletFixture {
   mockWallet: (page: Page, walletAddress?: string) => Promise<void>;
   disconnectWallet: (page: Page) => Promise<void>;
 }
 
 export const test = base.extend<WalletFixture>({
-  mockWallet: async ({}, use) => {
+  mockWallet: async ({}, setupFixture) => {
     const mockWallet = async (page: Page, walletAddress = 'GDEMOWALLETADDRESS123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ') => {
       await page.addInitScript((address) => {
-        (window as any).mockWalletConnected = true;
-        (window as any).mockWalletAddress = address;
+        const extendedWindow = window as ExtendedWindow;
+        extendedWindow.mockWalletConnected = true;
+        extendedWindow.mockWalletAddress = address;
         
-        (window as any).stellarWallet = {
+        extendedWindow.stellarWallet = {
           isConnected: () => true,
           getPublicKey: () => address,
           connect: async () => ({ publicKey: address }),
           disconnect: async () => {
-            (window as any).mockWalletConnected = false;
+            extendedWindow.mockWalletConnected = false;
           },
           signTransaction: async (xdr: string) => xdr,
         };
       }, walletAddress);
     };
     
-    await use(mockWallet);
+    await setupFixture(mockWallet);
   },
 
-  disconnectWallet: async ({}, use) => {
+  disconnectWallet: async ({}, setupFixture) => {
     const disconnectWallet = async (page: Page) => {
       await page.evaluate(() => {
-        if ((window as any).stellarWallet) {
-          (window as any).stellarWallet.disconnect();
+        const extendedWindow = window as ExtendedWindow;
+        if (extendedWindow.stellarWallet) {
+          extendedWindow.stellarWallet.disconnect();
         }
-        (window as any).mockWalletConnected = false;
+        extendedWindow.mockWalletConnected = false;
       });
     };
     
-    await use(disconnectWallet);
+    await setupFixture(disconnectWallet);
   },
 });
 

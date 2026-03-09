@@ -4,6 +4,17 @@ export interface MockApiOptions {
   baseUrl?: string;
 }
 
+interface Loan {
+  id?: string;
+  amount?: number;
+  currency?: string;
+  interestRate?: number;
+  termDays?: number;
+  status?: string;
+  borrowerId?: string;
+  createdAt?: string;
+}
+
 export class ApiMock {
   private page: Page;
   private baseUrl: string;
@@ -84,7 +95,7 @@ export class ApiMock {
     });
   }
 
-  async mockLoans(loans: any[] = []) {
+  async mockLoans(loans: Loan[] = []) {
     await this.page.route(`${this.baseUrl}/loans`, async (route: Route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
