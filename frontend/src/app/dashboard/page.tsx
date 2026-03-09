@@ -33,7 +33,7 @@ function DashboardContent() {
             <h2 className="mb-4 text-lg font-medium text-zinc-900 dark:text-zinc-50">
               Session Information
             </h2>
-            
+
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between border-b border-zinc-100 pb-2 dark:border-zinc-800">
                 <span className="text-zinc-600 dark:text-zinc-400">
@@ -50,7 +50,8 @@ function DashboardContent() {
                     Public Key:
                   </span>
                   <span className="font-mono text-xs text-zinc-900 dark:text-zinc-50">
-                    {wallet.publicKey.slice(0, 8)}...{wallet.publicKey.slice(-8)}
+                    {wallet.publicKey.slice(0, 8)}...
+                    {wallet.publicKey.slice(-8)}
                   </span>
                 </div>
               )}
@@ -98,8 +99,8 @@ function DashboardContent() {
               Your Loans
             </h2>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              This section would display user-specific loan data.
-              Access is protected by wallet connection and JWT authentication.
+              This section would display user-specific loan data. Access is
+              protected by wallet connection and JWT authentication.
             </p>
           </div>
         </div>
