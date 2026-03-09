@@ -1,4 +1,5 @@
 import Image from "next/image";
+import LoanRequestForm from "./components/LoanRequestForm";
 
 export default function Home() {
   return (

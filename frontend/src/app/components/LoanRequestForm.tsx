@@ -8,15 +8,18 @@ import { z } from "zod";
 // ── Zod Schema ─────────────────────────────────────────────────────────────
 const loanSchema = z.object({
   amount: z
-    .number({ invalid_type_error: "Enter a valid amount" })
+    .number({ error: "Enter a valid amount" })
     .min(100, "Minimum loan amount is $100")
     .max(10000, "Maximum loan amount is $10,000"),
-  duration: z.enum(["3", "6", "12", "24"], {
-    required_error: "Select a loan duration",
+  duration: z.enum(["3", "6", "12", "24"] as const, {
+    error: "Select a loan duration",
   }),
-  purpose: z.enum(["personal", "business", "education", "medical", "other"], {
-    required_error: "Select a loan purpose",
-  }),
+  purpose: z.enum(
+    ["personal", "business", "education", "medical", "other"] as const,
+    {
+      error: "Select a loan purpose",
+    },
+  ),
   useNftCollateral: z.boolean(),
   agreeFees: z.boolean().refine((v) => v === true, {
     message: "You must acknowledge the loan terms",
@@ -112,6 +115,7 @@ export default function LoanRequestForm() {
   const watchAmount = watch("amount");
   const watchDuration = watch("duration");
   const watchNft = watch("useNftCollateral");
+  const watchAgreeFees = watch("agreeFees");
 
   const rate = watchDuration ? getRate(watchDuration) : null;
   const monthly =
@@ -513,12 +517,12 @@ export default function LoanRequestForm() {
                         : "border-white/20 group-hover:border-white/40"
                   }`}
                   onClick={() =>
-                    setValue("agreeFees", !watch("agreeFees"), {
+                    setValue("agreeFees", !watchAgreeFees, {
                       shouldValidate: true,
                     })
                   }
                 >
-                  {watch("agreeFees") && (
+                  {watchAgreeFees && (
                     <span className="text-emerald-400 text-xs">✓</span>
                   )}
                 </div>
