@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/app/components/providers/QueryProvider";
-import { AppStateProvider } from "@/app/components/providers/AppStateProvider";
+import { WalletProvider } from "@/app/contexts/WalletContext";
+import { AuthProvider } from "@/app/contexts/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -65,8 +66,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {/* Wrap with providers in correct order: Query -> Wallet -> Auth */}
         <QueryProvider>
-          <AppStateProvider>{children}</AppStateProvider>
+          <WalletProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </WalletProvider>
         </QueryProvider>
       </body>
     </html>
