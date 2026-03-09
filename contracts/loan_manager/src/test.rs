@@ -8,12 +8,12 @@ fn test_loan_request_success() {
 
     let loan_manager_id = env.register(LoanManager, ());
     let manager = LoanManagerClient::new(&env, &loan_manager_id);
-    
+
     let nft_contract = Address::generate(&env);
     manager.initialize(&nft_contract);
-    
+
     let borrower = Address::generate(&env);
-    
+
     // Should succeed without panicking
     manager.request_loan(&borrower, &1000);
 }
@@ -26,12 +26,12 @@ fn test_loan_request_negative_amount() {
 
     let loan_manager_id = env.register(LoanManager, ());
     let manager = LoanManagerClient::new(&env, &loan_manager_id);
-    
+
     let nft_contract = Address::generate(&env);
     manager.initialize(&nft_contract);
-    
+
     let borrower = Address::generate(&env);
-    
+
     // Should panic due to negative amount
     manager.request_loan(&borrower, &-100);
 }
@@ -55,10 +55,10 @@ fn test_repayment_flow() {
 
     let loan_manager_id = env.register(LoanManager, ());
     let manager = LoanManagerClient::new(&env, &loan_manager_id);
-    
+
     let nft_contract = Address::generate(&env);
     manager.initialize(&nft_contract);
-    
+
     let borrower = Address::generate(&env);
 
     // Should succeed without panicking
@@ -73,10 +73,10 @@ fn test_repayment_negative_amount() {
 
     let loan_manager_id = env.register(LoanManager, ());
     let manager = LoanManagerClient::new(&env, &loan_manager_id);
-    
+
     let nft_contract = Address::generate(&env);
     manager.initialize(&nft_contract);
-    
+
     let borrower = Address::generate(&env);
 
     // Should panic due to negative amount
@@ -91,10 +91,10 @@ fn test_access_controls_unauthorized_repay() {
 
     let loan_manager_id = env.register(LoanManager, ());
     let manager = LoanManagerClient::new(&env, &loan_manager_id);
-    
+
     let nft_contract = Address::generate(&env);
     manager.initialize(&nft_contract);
-    
+
     let borrower = Address::generate(&env);
 
     // Attempting to repay without proper Authorization scope should panic natively.

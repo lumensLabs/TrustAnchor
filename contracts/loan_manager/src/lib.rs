@@ -26,14 +26,14 @@ impl LoanManager {
             .instance()
             .get(&DataKey::NftContract)
             .expect("not initialized");
-        
+
         // For now, just assume all borrowers have sufficient score
         // In a real implementation, you'd call the NFT contract to get the score
-        
+
         if amount <= 0 {
             panic!("loan amount must be positive");
         }
-        
+
         // Loan request logic (placeholder)
         events::loan_requested(&env, borrower, amount);
     }
@@ -49,7 +49,7 @@ impl LoanManager {
         if amount <= 0 {
             panic!("repayment amount must be positive");
         }
-        
+
         // Repayment logic (placeholder)
         events::loan_repaid(&env, borrower, amount);
     }
