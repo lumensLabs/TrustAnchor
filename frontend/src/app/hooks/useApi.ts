@@ -48,6 +48,13 @@ export const queryKeys = {
 /**
  * Thin fetch wrapper that:
  * - Prepends the API base URL
+ * - Handles authentication tokens
+ * - Intercepts 401 errors for session expiry
+ */
+/**
+ * Legacy fetch wrapper (deprecated - use api from apiClient instead)
+ * Thin fetch wrapper that:
+ * - Prepends the API base URL
  * - Sets JSON Content-Type
  * - Throws a descriptive error on non-2xx responses
  */

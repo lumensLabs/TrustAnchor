@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/app/components/providers/QueryProvider";
+import { WalletProvider } from "@/app/contexts/WalletContext";
+import { AuthProvider } from "@/app/contexts/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -64,8 +66,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* QueryProvider wraps the entire app so any component can use React Query hooks */}
-        <QueryProvider>{children}</QueryProvider>
+        {/* Wrap with providers in correct order: Query -> Wallet -> Auth */}
+        <QueryProvider>
+          <WalletProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </WalletProvider>
+        </QueryProvider>
       </body>
     </html>
   );
