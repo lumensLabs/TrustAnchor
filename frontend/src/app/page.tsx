@@ -24,8 +24,9 @@ export default function Home() {
             RemitLend - Borderless P2P Lending
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Connect your Stellar wallet to access decentralized lending powered by remittance history.
-            Your credit score, your collateral, your control.
+            Connect your Stellar wallet to access decentralized lending powered
+            by remittance history. Your credit score, your collateral, your
+            control.
           </p>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
