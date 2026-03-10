@@ -15,18 +15,25 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import {
+  freighterConnector,
+  sorobanConnectors,
+  type WalletConnector,
+} from "@/app/lib/wallet/freighterConnector";
 
 interface WalletState {
   isConnected: boolean;
   publicKey: string | null;
   isConnecting: boolean;
   error: string | null;
+  connectorId: WalletConnector["id"] | null;
 }
 
 interface WalletContextValue extends WalletState {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearError: () => void;
+  availableWallets: readonly WalletConnector[];
 }
 
 const WalletContext = createContext<WalletContextValue | undefined>(undefined);
@@ -41,6 +48,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     publicKey: null,
     isConnecting: false,
     error: null,
+    connectorId: null,
   });
 
   /**
@@ -50,48 +58,22 @@ export function WalletProvider({ children }: WalletProviderProps) {
     setState((prev) => ({ ...prev, isConnecting: true, error: null }));
 
     try {
-      // Check for Freighter wallet
-      const freighter = (window as Window & { freighter?: { isConnected: () => Promise<boolean>; requestAccess: () => Promise<string>; getPublicKey: () => Promise<string> } }).freighter;
-      
-      if (!freighter) {
-        throw new Error("No Stellar wallet found. Please install Freighter wallet extension.");
-      }
+      const isAlreadyConnected = await freighterConnector.isConnected();
+      const publicKey = isAlreadyConnected
+        ? await freighterConnector.getPublicKey()
+        : await freighterConnector.connect();
 
-      // Check if Freighter is available
-      const isFreighterAvailable = await freighter.isConnected();
-      
-      if (!isFreighterAvailable) {
-        // Request connection
-        const publicKey = await freighter.requestAccess();
-        
-        if (!publicKey) {
-          throw new Error("Wallet connection was rejected");
-        }
+      setState({
+        isConnected: true,
+        publicKey,
+        isConnecting: false,
+        error: null,
+        connectorId: freighterConnector.id,
+      });
 
-        setState({
-          isConnected: true,
-          publicKey,
-          isConnecting: false,
-          error: null,
-        });
-
-        // Store connection state in localStorage for persistence
-        localStorage.setItem("wallet_connected", "true");
-        localStorage.setItem("wallet_public_key", publicKey);
-      } else {
-        // Already connected, get public key
-        const publicKey = await freighter.getPublicKey();
-        
-        setState({
-          isConnected: true,
-          publicKey,
-          isConnecting: false,
-          error: null,
-        });
-
-        localStorage.setItem("wallet_connected", "true");
-        localStorage.setItem("wallet_public_key", publicKey);
-      }
+      localStorage.setItem("wallet_connected", "true");
+      localStorage.setItem("wallet_public_key", publicKey);
+      localStorage.setItem("wallet_connector_id", freighterConnector.id);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to connect wallet";
       setState({
@@ -99,6 +81,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         publicKey: null,
         isConnecting: false,
         error: errorMessage,
+        connectorId: null,
       });
     }
   }, []);
@@ -113,17 +96,17 @@ export function WalletProvider({ children }: WalletProviderProps) {
     } catch (err) {
       console.error("Error disconnecting wallet:", err);
     } finally {
-      // Always clear state
       setState({
         isConnected: false,
         publicKey: null,
         isConnecting: false,
         error: null,
+        connectorId: null,
       });
 
-      // Clear localStorage
       localStorage.removeItem("wallet_connected");
       localStorage.removeItem("wallet_public_key");
+      localStorage.removeItem("wallet_connector_id");
     }
   }, []);
 
@@ -142,9 +125,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
         publicKey: null,
         isConnecting: false,
         error: "Wallet disconnected",
+        connectorId: null,
       });
       localStorage.removeItem("wallet_connected");
       localStorage.removeItem("wallet_public_key");
+      localStorage.removeItem("wallet_connector_id");
     };
 
     // Listen for wallet events
@@ -161,48 +146,47 @@ export function WalletProvider({ children }: WalletProviderProps) {
   useEffect(() => {
     const wasConnected = localStorage.getItem("wallet_connected") === "true";
     const savedPublicKey = localStorage.getItem("wallet_public_key");
+    const connectorId = localStorage.getItem("wallet_connector_id");
 
-    if (wasConnected && savedPublicKey) {
-      const freighter = (window as Window & { freighter?: { isConnected: () => Promise<boolean>; requestAccess: () => Promise<string>; getPublicKey: () => Promise<string> } }).freighter;
-      
-      if (freighter) {
-        // Verify wallet is still connected
-        freighter.isConnected().then((isConnected: boolean) => {
-          if (isConnected) {
-            freighter.getPublicKey().then((publicKey: string) => {
-              if (publicKey === savedPublicKey) {
-                setState({
-                  isConnected: true,
-                  publicKey: savedPublicKey,
-                  isConnecting: false,
-                  error: null,
-                });
-              } else {
-                // Different wallet connected, clear state
-                localStorage.removeItem("wallet_connected");
-                localStorage.removeItem("wallet_public_key");
-              }
-            }).catch(() => {
-              // Error getting public key, clear state
-              localStorage.removeItem("wallet_connected");
-              localStorage.removeItem("wallet_public_key");
-            });
-          } else {
-            // Wallet was disconnected externally, clear state
-            localStorage.removeItem("wallet_connected");
-            localStorage.removeItem("wallet_public_key");
-          }
-        }).catch(() => {
-          // Error checking connection, clear state
-          localStorage.removeItem("wallet_connected");
-          localStorage.removeItem("wallet_public_key");
-        });
-      } else {
-        // Freighter not available, clear state
-        localStorage.removeItem("wallet_connected");
-        localStorage.removeItem("wallet_public_key");
-      }
+    const clearPersistedWallet = () => {
+      localStorage.removeItem("wallet_connected");
+      localStorage.removeItem("wallet_public_key");
+      localStorage.removeItem("wallet_connector_id");
+    };
+
+    if (!wasConnected || !savedPublicKey) {
+      return;
     }
+
+    if (connectorId && connectorId !== freighterConnector.id) {
+      clearPersistedWallet();
+      return;
+    }
+
+    freighterConnector
+      .isConnected()
+      .then((isConnected) => {
+        if (!isConnected) {
+          clearPersistedWallet();
+          return;
+        }
+
+        return freighterConnector.getPublicKey().then((publicKey) => {
+          if (publicKey !== savedPublicKey) {
+            clearPersistedWallet();
+            return;
+          }
+
+          setState({
+            isConnected: true,
+            publicKey: savedPublicKey,
+            isConnecting: false,
+            error: null,
+            connectorId: freighterConnector.id,
+          });
+        });
+      })
+      .catch(clearPersistedWallet);
   }, []);
 
   const value: WalletContextValue = {
@@ -210,6 +194,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     connect,
     disconnect,
     clearError,
+    availableWallets: sorobanConnectors,
   };
 
   return (

@@ -12,8 +12,15 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import { Button } from "@/app/components/global_ui/Button";
 
 export function WalletButton() {
-  const { isConnected, publicKey, isConnecting, error, connect, disconnect } =
-    useWallet();
+  const {
+    isConnected,
+    publicKey,
+    isConnecting,
+    error,
+    connectorId,
+    connect,
+    disconnect,
+  } = useWallet();
   const { logout } = useAuth();
 
   const handleDisconnect = async () => {
@@ -24,9 +31,14 @@ export function WalletButton() {
   if (isConnected && publicKey) {
     return (
       <div className="flex items-center gap-3">
-        <span className="text-sm text-zinc-600 dark:text-zinc-400">
+        <span className="text-sm text-foreground/70">
           {publicKey.slice(0, 6)}...{publicKey.slice(-4)}
         </span>
+        {connectorId && (
+          <span className="hidden rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary sm:inline">
+            {connectorId}
+          </span>
+        )}
         <Button
           onClick={handleDisconnect}
           variant="secondary"
@@ -49,7 +61,7 @@ export function WalletButton() {
         {isConnecting ? "Connecting..." : "Connect Wallet"}
       </Button>
       {error && (
-        <span className="text-sm text-red-600 dark:text-red-400">{error}</span>
+        <span className="text-sm text-red-600">{error}</span>
       )}
     </div>
   );

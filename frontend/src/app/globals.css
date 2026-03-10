@@ -1,28 +1,67 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f6f2;
+  --foreground: #102a43;
+  --surface: #ffffff;
+  --surface-muted: #edf2f7;
+  --primary: #0f766e;
+  --primary-foreground: #ecfeff;
+  --accent: #f59e0b;
+  --border: #cbd5e1;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --font-sans: var(--font-body);
+  --font-heading: var(--font-heading);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #08111b;
+    --foreground: #dbeafe;
+    --surface: #0f172a;
+    --surface-muted: #10233a;
+    --primary: #2dd4bf;
+    --primary-foreground: #022c22;
+    --accent: #facc15;
+    --border: #1e293b;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top right, rgb(245 158 11 / 14%), transparent 38%),
+      radial-gradient(circle at bottom left, rgb(15 118 110 / 16%), transparent 40%),
+      var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body), sans-serif;
+    line-height: 1.45;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading), sans-serif;
+    letter-spacing: -0.02em;
+  }
 }
 
 @keyframes reverse-spin {
@@ -50,4 +89,36 @@ body {
 
 .animate-dot-bounce {
   animation: dot-bounce 1.4s infinite ease-in-out both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 700ms ease-out both;
+}
+
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-300 {
+  animation-delay: 300ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
 }

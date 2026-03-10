@@ -9,27 +9,17 @@
 
 import { AuthGuard } from "@/app/components/AuthGuard";
 import { useSession } from "@/app/hooks/useSession";
-import { WalletButton } from "@/app/components/WalletButton";
 
 function DashboardContent() {
   const { wallet, auth, isFullyAuthenticated } = useSession();
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-black">
-      {/* Header */}
-      <header className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-            RemitLend Dashboard
-          </h1>
-          <WalletButton />
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 px-6 py-8">
-        <div className="mx-auto max-w-7xl">
-          <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="px-6 py-8">
+      <div className="mx-auto max-w-7xl">
+        <h1 className="mb-6 font-heading text-3xl font-semibold tracking-tight">
+          RemitLend Dashboard
+        </h1>
+        <div className="rounded-lg border border-border bg-surface p-6">
             <h2 className="mb-4 text-lg font-medium text-zinc-900 dark:text-zinc-50">
               Session Information
             </h2>
@@ -91,20 +81,18 @@ function DashboardContent() {
                 </span>
               </div>
             </div>
-          </div>
-
-          {/* Example protected content */}
-          <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-            <h2 className="mb-4 text-lg font-medium text-zinc-900 dark:text-zinc-50">
-              Your Loans
-            </h2>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              This section would display user-specific loan data. Access is
-              protected by wallet connection and JWT authentication.
-            </p>
-          </div>
         </div>
-      </main>
+
+        <div className="mt-6 rounded-lg border border-border bg-surface p-6">
+          <h2 className="mb-4 text-lg font-medium text-zinc-900 dark:text-zinc-50">
+            Your Loans
+          </h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            This section would display user-specific loan data. Access is
+            protected by wallet connection and JWT authentication.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
