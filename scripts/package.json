@@ -1,0 +1,39 @@
+{
+  "name": "remitlend-scripts",
+  "version": "1.0.0",
+  "description": "Deployment and testing scripts for RemitLend smart contracts",
+  "main": "deploy-contracts.js",
+  "scripts": {
+    "deploy": "node deploy-contracts.js deploy",
+    "deploy:mainnet": "node deploy-contracts.js deploy -n mainnet --yes",
+    "build": "node deploy-contracts.js build",
+    "test": "bash test-contracts.sh",
+    "test:mainnet": "bash test-contracts.sh -e .env.mainnet",
+    "setup": "chmod +x *.sh",
+    "help": "node deploy-contracts.js help"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "blockchain",
+    "smart-contracts",
+    "defi",
+    "lending"
+  ],
+  "author": "RemitLend Team",
+  "license": "ISC",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/remitlend.git",
+    "directory": "scripts"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/remitlend/issues"
+  },
+  "homepage": "https://github.com/your-org/remitlend#readme"
+}
