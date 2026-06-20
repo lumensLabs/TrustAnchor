@@ -5,6 +5,10 @@
  * Automatically logs out users when tokens expire or become invalid.
  */
 
+// Delegate wallet key cleanup to WalletContext so the key list
+// can never drift (fixes: wallet_connector_id left stale after 401)
+import { clearWalletStorage } from "@/app/contexts/WalletContext";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 interface FetchOptions extends RequestInit {
@@ -20,21 +24,15 @@ export async function apiClient<T = unknown>(
 ): Promise<T> {
   const { requiresAuth = false, headers, ...restOptions } = options;
 
-  // Build headers
   const requestHeaders: Record<string, string> = {
     "Content-Type": "application/json",
   };
 
-  // Merge provided headers
   if (headers) {
     if (headers instanceof Headers) {
-      headers.forEach((value, key) => {
-        requestHeaders[key] = value;
-      });
+      headers.forEach((value, key) => { requestHeaders[key] = value; });
     } else if (Array.isArray(headers)) {
-      headers.forEach(([key, value]) => {
-        requestHeaders[key] = value;
-      });
+      headers.forEach(([key, value]) => { requestHeaders[key] = value; });
     } else {
       Object.entries(headers).forEach(([key, value]) => {
         requestHeaders[key] = value;
@@ -42,7 +40,6 @@ export async function apiClient<T = unknown>(
     }
   }
 
-  // Add auth token if required
   if (requiresAuth) {
     const token = localStorage.getItem("auth_token");
     if (token) {
@@ -60,19 +57,20 @@ export async function apiClient<T = unknown>(
 
     // Handle 401 Unauthorized - token expired or invalid
     if (response.status === 401) {
-      // Clear auth state
+      // Clear auth keys
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_expires_at");
-      localStorage.removeItem("wallet_connected");
-      localStorage.removeItem("wallet_public_key");
 
-      // Dispatch custom event for auth context to handle
+      // Delegate wallet cleanup — clears wallet_connected,
+      // wallet_public_key AND wallet_connector_id (was missing before)
+      clearWalletStorage();
+
+      // Let AuthContext handle redirect + wallet disconnect
       window.dispatchEvent(new CustomEvent("auth_session_expired"));
 
       throw new Error("Session expired. Please log in again.");
     }
 
-    // Handle other error responses
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
@@ -80,17 +78,12 @@ export async function apiClient<T = unknown>(
       );
     }
 
-    // Parse and return response
     return await response.json();
   } catch (error) {
-    // Re-throw for caller to handle
     throw error;
   }
 }
 
-/**
- * Convenience methods for common HTTP verbs
- */
 export const api = {
   get: <T = unknown>(endpoint: string, options?: FetchOptions) =>
     apiClient<T>(endpoint, { ...options, method: "GET" }),

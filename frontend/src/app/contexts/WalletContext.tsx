@@ -21,6 +21,27 @@ import {
   type WalletConnector,
 } from "@/app/lib/wallet/freighterConnector";
 
+// ── Centralised storage keys ──────────────────────────────────────────────────
+// Single source of truth for all wallet localStorage keys.
+// Imported by apiClient.ts so the two can never drift apart.
+export const WALLET_STORAGE_KEYS = {
+  WALLET_CONNECTED:    "wallet_connected",
+  WALLET_PUBLIC_KEY:   "wallet_public_key",
+  WALLET_CONNECTOR_ID: "wallet_connector_id",
+} as const;
+
+/**
+ * Removes every wallet key from localStorage in one call.
+ * Exported so apiClient can delegate cleanup here instead of
+ * maintaining its own (incomplete) list of keys.
+ */
+export function clearWalletStorage(): void {
+  Object.values(WALLET_STORAGE_KEYS).forEach((key) =>
+    localStorage.removeItem(key)
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface WalletState {
   isConnected: boolean;
   publicKey: string | null;
@@ -71,11 +92,13 @@ export function WalletProvider({ children }: WalletProviderProps) {
         connectorId: freighterConnector.id,
       });
 
-      localStorage.setItem("wallet_connected", "true");
-      localStorage.setItem("wallet_public_key", publicKey);
-      localStorage.setItem("wallet_connector_id", freighterConnector.id);
+      // Use constants — never hardcode key strings
+      localStorage.setItem(WALLET_STORAGE_KEYS.WALLET_CONNECTED,    "true");
+      localStorage.setItem(WALLET_STORAGE_KEYS.WALLET_PUBLIC_KEY,   publicKey);
+      localStorage.setItem(WALLET_STORAGE_KEYS.WALLET_CONNECTOR_ID, freighterConnector.id);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to connect wallet";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to connect wallet";
       setState({
         isConnected: false,
         publicKey: null,
@@ -91,8 +114,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
    */
   const disconnect = useCallback(async () => {
     try {
-      // Freighter doesn't have a disconnect method, just clear local state
-      // User can disconnect from the extension itself
+      // Freighter doesn't have a disconnect method, just clear local state.
+      // User can disconnect from the extension itself.
     } catch (err) {
       console.error("Error disconnecting wallet:", err);
     } finally {
@@ -103,10 +126,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
         error: null,
         connectorId: null,
       });
-
-      localStorage.removeItem("wallet_connected");
-      localStorage.removeItem("wallet_public_key");
-      localStorage.removeItem("wallet_connector_id");
+      // Centralised helper — clears wallet_connected, wallet_public_key,
+      // AND wallet_connector_id in one place
+      clearWalletStorage();
     }
   }, []);
 
@@ -115,8 +137,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
   }, []);
 
   /**
-   * Listen for wallet disconnection events
-   * Stellar wallets emit events when user disconnects from extension
+   * Listen for wallet disconnection events.
+   * Stellar wallets emit events when user disconnects from extension.
    */
   useEffect(() => {
     const handleWalletDisconnect = () => {
@@ -127,14 +149,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
         error: "Wallet disconnected",
         connectorId: null,
       });
-      localStorage.removeItem("wallet_connected");
-      localStorage.removeItem("wallet_public_key");
-      localStorage.removeItem("wallet_connector_id");
+      // Centralised helper — all three keys cleared
+      clearWalletStorage();
     };
 
-    // Listen for wallet events
     window.addEventListener("wallet_disconnected", handleWalletDisconnect);
-
     return () => {
       window.removeEventListener("wallet_disconnected", handleWalletDisconnect);
     };
@@ -144,22 +163,17 @@ export function WalletProvider({ children }: WalletProviderProps) {
    * Restore wallet connection on mount if previously connected
    */
   useEffect(() => {
-    const wasConnected = localStorage.getItem("wallet_connected") === "true";
-    const savedPublicKey = localStorage.getItem("wallet_public_key");
-    const connectorId = localStorage.getItem("wallet_connector_id");
+    const wasConnected =
+      localStorage.getItem(WALLET_STORAGE_KEYS.WALLET_CONNECTED) === "true";
+    const savedPublicKey =
+      localStorage.getItem(WALLET_STORAGE_KEYS.WALLET_PUBLIC_KEY);
+    const connectorId =
+      localStorage.getItem(WALLET_STORAGE_KEYS.WALLET_CONNECTOR_ID);
 
-    const clearPersistedWallet = () => {
-      localStorage.removeItem("wallet_connected");
-      localStorage.removeItem("wallet_public_key");
-      localStorage.removeItem("wallet_connector_id");
-    };
-
-    if (!wasConnected || !savedPublicKey) {
-      return;
-    }
+    if (!wasConnected || !savedPublicKey) return;
 
     if (connectorId && connectorId !== freighterConnector.id) {
-      clearPersistedWallet();
+      clearWalletStorage();
       return;
     }
 
@@ -167,16 +181,14 @@ export function WalletProvider({ children }: WalletProviderProps) {
       .isConnected()
       .then((isConnected) => {
         if (!isConnected) {
-          clearPersistedWallet();
+          clearWalletStorage();
           return;
         }
-
         return freighterConnector.getPublicKey().then((publicKey) => {
           if (publicKey !== savedPublicKey) {
-            clearPersistedWallet();
+            clearWalletStorage();
             return;
           }
-
           setState({
             isConnected: true,
             publicKey: savedPublicKey,
@@ -186,7 +198,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
           });
         });
       })
-      .catch(clearPersistedWallet);
+      .catch(clearWalletStorage);
   }, []);
 
   const value: WalletContextValue = {
@@ -202,16 +214,10 @@ export function WalletProvider({ children }: WalletProviderProps) {
   );
 }
 
-/**
- * Hook to access wallet context
- * Throws error if used outside WalletProvider
- */
 export function useWallet(): WalletContextValue {
   const context = useContext(WalletContext);
-  
   if (context === undefined) {
     throw new Error("useWallet must be used within a WalletProvider");
   }
-  
   return context;
 }
