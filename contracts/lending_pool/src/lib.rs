@@ -7,6 +7,9 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 pub enum DataKey {
     Token,
     Deposit(Address),
+    MaxDeposit,      // Maximum deposit per user
+    MinWithdraw,     // Minimum withdrawal amount
+    TotalDeposits,   // Track total protocol deposits
 }
 
 #[contract]
