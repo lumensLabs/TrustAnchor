@@ -1,12 +1,23 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, IntoVal};
 
 mod events;
 
 #[contracttype]
 #[derive(Clone)]
+pub struct Loan {
+    pub id: u32,
+    pub borrower: Address,
+    pub original_amount: i128,
+    pub balance: i128,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     NftContract,
+    Loan(u32),
+    NextLoanId,
 }
 
 #[contract]
@@ -50,7 +61,58 @@ impl LoanManager {
             panic!("repayment amount must be positive");
         }
 
-        // Repayment logic (placeholder)
+        let nft_contract: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::NftContract)
+            .expect("not initialized");
+
+        // Find the borrower's active loan
+        // For now, assuming there's a single active loan per borrower
+        // In a full implementation, we'd need a more sophisticated lookup
+        let loan_key = DataKey::Loan(1); // Placeholder: would need loan_id tracking
+        
+        if !env.storage().instance().has(&loan_key) {
+            panic!("no active loan found for borrower");
+        }
+
+        let mut loan: Loan = env
+            .storage()
+            .instance()
+            .get(&loan_key)
+            .expect("loan not found");
+
+        // Verify this loan belongs to the borrower
+        if loan.borrower != borrower {
+            panic!("loan does not belong to borrower");
+        }
+
+        // Ensure we don't overpay
+        if amount > loan.balance {
+            panic!("repayment amount exceeds loan balance");
+        }
+
+        // Update loan balance
+        loan.balance -= amount;
+        env.storage().instance().set(&loan_key, &loan);
+
+        // Call remittance_nft contract to update the borrower's score
+        // Using the soroban SDK to invoke cross-contract calls
+        use soroban_sdk::InvokeContractOptions;
+        
+        // Invoke: nft_contract.update_score(borrower, amount, Some(env.current_contract_address()))
+        let _: () = env.invoke_contract(
+            &nft_contract,
+            &soroban_sdk::Symbol::new(&env, "update_score"),
+            soroban_sdk::vec![
+                &env,
+                borrower.into_val(&env),
+                amount.into_val(&env),
+                soroban_sdk::Option::<Address>::Some(env.current_contract_address()).into_val(&env),
+            ],
+        );
+
+        // Emit repayment event
         events::loan_repaid(&env, borrower, amount);
     }
 }
