@@ -14,8 +14,16 @@ import { swaggerSpec } from "./config/swagger.js";
 import { globalRateLimiter } from "./middleware/rateLimiter.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { AppError } from "./errors/AppError.js";
+import { parseTrustProxy } from "./config/trustProxy.js";
 
 const app = express();
+
+// Configure how many proxy hops to trust so that `req.ip` (and therefore
+// per-IP rate limiting) resolves to the real client behind a load balancer /
+// reverse proxy instead of the proxy's address. Controlled via the
+// `TRUST_PROXY` env var; defaults to not trusting any proxy. Must be set
+// before any middleware that relies on `req.ip`.
+app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY));
 
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
   ? process.env.CORS_ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
