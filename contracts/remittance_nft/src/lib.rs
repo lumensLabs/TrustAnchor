@@ -20,6 +20,24 @@ pub enum DataKey {
 #[contract]
 pub struct RemittanceNFT;
 
+// TTL strategy:
+// - Bump keys when they are near expiry (<= threshold)
+// - Extend them out to a longer horizon to prevent silent archival.
+const PERSISTENT_TTL_THRESHOLD: u32 = 120_960; // ~1 week at 5s/ledger
+const PERSISTENT_TTL_BUMP_TO: u32 = 241_920; // ~2 weeks at 5s/ledger
+
+fn bump_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_BUMP_TO);
+}
+
+fn bump_metadata_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_BUMP_TO);
+}
+
 #[contractimpl]
 impl RemittanceNFT {
     pub fn initialize(env: Env, admin: Address) {
@@ -31,6 +49,7 @@ impl RemittanceNFT {
         env.storage()
             .instance()
             .set(&DataKey::AuthorizedMinter(admin.clone()), &true);
+        bump_instance_ttl(&env);
     }
 
     /// Authorize a contract or account to mint NFTs
@@ -45,6 +64,7 @@ impl RemittanceNFT {
         env.storage()
             .instance()
             .set(&DataKey::AuthorizedMinter(minter), &true);
+        bump_instance_ttl(&env);
     }
 
     /// Revoke authorization for a contract or account to mint NFTs
@@ -59,6 +79,7 @@ impl RemittanceNFT {
         env.storage()
             .instance()
             .remove(&DataKey::AuthorizedMinter(minter));
+        bump_instance_ttl(&env);
     }
 
     /// Check if an address is authorized to mint
@@ -118,6 +139,8 @@ impl RemittanceNFT {
         };
 
         env.storage().persistent().set(&metadata_key, &metadata);
+        bump_metadata_ttl(&env, &metadata_key);
+        bump_instance_ttl(&env);
     }
 
     /// Get the metadata (score and history hash) for a user's NFT
@@ -204,6 +227,7 @@ impl RemittanceNFT {
                 history_hash: default_hash,
             };
             env.storage().persistent().set(&metadata_key, &migrated);
+            bump_metadata_ttl(&env, &metadata_key);
             env.storage().persistent().remove(&score_key);
             migrated
         } else {
@@ -215,6 +239,8 @@ impl RemittanceNFT {
         metadata.score += points;
 
         env.storage().persistent().set(&metadata_key, &metadata);
+        bump_metadata_ttl(&env, &metadata_key);
+        bump_instance_ttl(&env);
     }
 
     /// Update the history hash for a user's NFT
@@ -263,6 +289,7 @@ impl RemittanceNFT {
                 history_hash: default_hash,
             };
             env.storage().persistent().set(&metadata_key, &migrated);
+            bump_metadata_ttl(&env, &metadata_key);
             env.storage().persistent().remove(&score_key);
             migrated
         } else {
@@ -272,6 +299,8 @@ impl RemittanceNFT {
         metadata.history_hash = new_history_hash;
 
         env.storage().persistent().set(&metadata_key, &metadata);
+        bump_metadata_ttl(&env, &metadata_key);
+        bump_instance_ttl(&env);
     }
 }
 

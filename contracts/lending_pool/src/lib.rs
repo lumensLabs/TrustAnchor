@@ -12,6 +12,25 @@ pub enum DataKey {
 #[contract]
 pub struct LendingPool;
 
+// TTL strategy:
+// - When an entry has <= PERSISTENT_TTL_THRESHOLD ledgers left, bump it to
+//   PERSISTENT_TTL_BUMP_TO ledgers.
+// - We use the same values for instance storage to keep Token config alive.
+const PERSISTENT_TTL_THRESHOLD: u32 = 120_960; // ~1 week at 5s/ledger
+const PERSISTENT_TTL_BUMP_TO: u32 = 241_920; // ~2 weeks at 5s/ledger
+
+fn bump_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_BUMP_TO);
+}
+
+fn bump_deposit_ttl(env: &Env, key: &DataKey) {
+    env.storage()
+        .persistent()
+        .extend_ttl(key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_BUMP_TO);
+}
+
 #[contractimpl]
 impl LendingPool {
     pub fn initialize(env: Env, token: Address) {
@@ -19,6 +38,7 @@ impl LendingPool {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Token, &token);
+        bump_instance_ttl(&env);
     }
 
     pub fn deposit(env: Env, provider: Address, amount: i128) {
@@ -37,6 +57,8 @@ impl LendingPool {
         let mut current_balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         current_balance += amount;
         env.storage().persistent().set(&key, &current_balance);
+        bump_deposit_ttl(&env, &key);
+        bump_instance_ttl(&env);
         env.events()
             .publish((symbol_short!("Deposit"), provider), amount);
     }
@@ -66,6 +88,8 @@ impl LendingPool {
         env.storage()
             .persistent()
             .set(&key, &(current_balance - amount));
+        bump_deposit_ttl(&env, &key);
+        bump_instance_ttl(&env);
         env.events()
             .publish((symbol_short!("Withdraw"), provider), amount);
     }

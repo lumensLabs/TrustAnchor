@@ -1,8 +1,15 @@
 use crate::{LendingPool, LendingPoolClient};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{Address, Env};
+
+fn advance_ledgers(env: &Env, ledgers: u32) {
+    env.ledger().with_mut(|li| {
+        li.sequence_number += ledgers;
+        li.timestamp += ledgers as u64 * 5;
+    });
+}
 
 fn create_token_contract<'a>(
     env: &Env,
@@ -157,4 +164,46 @@ fn test_insufficient_balance_withdraw_panic() {
 
     // Attempt to withdraw more than deposited
     pool_client.withdraw(&provider, &2000);
+}
+
+#[test]
+fn test_deposit_ttl_is_extended_past_default_lifetime() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_admin = Address::generate(&env);
+    let (token_id, stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
+
+    let pool_id = env.register(LendingPool, ());
+    let pool_client = LendingPoolClient::new(&env, &pool_id);
+    pool_client.initialize(&token_id);
+
+    let control_provider = Address::generate(&env);
+    let bumped_provider = Address::generate(&env);
+
+    let control_key = crate::DataKey::Deposit(control_provider.clone());
+    let bumped_key = crate::DataKey::Deposit(bumped_provider.clone());
+
+    env.as_contract(&pool_id, || {
+        env.storage().persistent().set(&control_key, &1i128);
+    });
+
+    let default_ttl = env.as_contract(&pool_id, || {
+        env.storage().persistent().get_ttl(&control_key)
+    });
+
+    stellar_asset_client.mint(&bumped_provider, &5000);
+    pool_client.deposit(&bumped_provider, &1000);
+
+    let bumped_ttl = env.as_contract(&pool_id, || env.storage().persistent().get_ttl(&bumped_key));
+    assert!(bumped_ttl > default_ttl);
+
+    advance_ledgers(&env, default_ttl + 1);
+
+    env.as_contract(&pool_id, || {
+        assert!(!env.storage().persistent().has(&control_key));
+        assert!(env.storage().persistent().has(&bumped_key));
+    });
+
+    assert_eq!(pool_client.get_deposit(&bumped_provider), 1000);
 }
