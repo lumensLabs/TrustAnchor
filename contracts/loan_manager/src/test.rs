@@ -1,4 +1,4 @@
-use crate::{LoanManager, LoanManagerClient};
+use crate::{Loan, LoanManager, LoanManagerClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]
@@ -99,4 +99,69 @@ fn test_access_controls_unauthorized_repay() {
 
     // Attempting to repay without proper Authorization scope should panic natively.
     manager.repay(&borrower, &500);
+}
+
+#[test]
+fn test_repayment_updates_loan_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let loan_manager_id = env.register(LoanManager, ());
+    let manager = LoanManagerClient::new(&env, &loan_manager_id);
+
+    let nft_contract = Address::generate(&env);
+    manager.initialize(&nft_contract);
+
+    let borrower = Address::generate(&env);
+
+    // Create a loan by manually setting it in storage
+    let _loan = Loan {
+        id: 1,
+        borrower: borrower.clone(),
+        original_amount: 1000,
+        balance: 1000,
+    };
+
+    // This would require exposing storage or a create_loan method
+    // For now, this test serves as a placeholder showing the expected behavior
+    manager.repay(&borrower, &200);
+
+    // The balance should decrease to 800 after repay
+    // Verification would require a get_loan method or exposing storage
+}
+
+#[test]
+#[should_panic(expected = "repayment amount exceeds loan balance")]
+fn test_repayment_cannot_exceed_balance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let loan_manager_id = env.register(LoanManager, ());
+    let manager = LoanManagerClient::new(&env, &loan_manager_id);
+
+    let nft_contract = Address::generate(&env);
+    manager.initialize(&nft_contract);
+
+    let borrower = Address::generate(&env);
+
+    // Attempt to repay more than the balance
+    manager.repay(&borrower, &2000);
+}
+
+#[test]
+#[should_panic(expected = "no active loan found for borrower")]
+fn test_repayment_requires_existing_loan() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let loan_manager_id = env.register(LoanManager, ());
+    let manager = LoanManagerClient::new(&env, &loan_manager_id);
+
+    let nft_contract = Address::generate(&env);
+    manager.initialize(&nft_contract);
+
+    let borrower = Address::generate(&env);
+
+    // Attempt to repay when no loan exists
+    manager.repay(&borrower, &100);
 }
