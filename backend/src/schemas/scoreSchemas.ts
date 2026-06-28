@@ -21,11 +21,9 @@ export const updateScoreSchema = z.object({
       .number()
       .positive("Repayment amount must be positive")
       .max(1_000_000, "Repayment amount exceeds maximum limit"),
-    onTime: z
-      .boolean()
-      .refine((val) => val !== undefined, {
-        message: "onTime is required",
-      }),
+    onTime: z.boolean().refine((val) => val !== undefined, {
+      message: "onTime is required",
+    }),
   }),
 });
 
