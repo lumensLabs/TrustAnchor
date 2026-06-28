@@ -7,7 +7,7 @@
  * Shows connection status and handles user interactions.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useWallet } from "@/app/contexts/WalletContext";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { Button } from "@/app/components/global_ui/Button";
@@ -26,7 +26,7 @@ function ConnectWalletModal({
   isConnecting: boolean;
   error: string | null;
 }) {
-  const installed = useMemo(() => isFreighterInstalled(), [isOpen]);
+  const installed = isFreighterInstalled();
 
   if (!isOpen) {
     return null;
@@ -124,12 +124,6 @@ export function WalletButton() {
   const { logout } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (isConnected) {
-      setIsModalOpen(false);
-    }
-  }, [isConnected]);
-
   const handleDisconnect = async () => {
     await disconnect();
     await logout();
@@ -142,6 +136,7 @@ export function WalletButton() {
 
   const handleConnect = async () => {
     await connect();
+    setIsModalOpen(false);
   };
 
   if (isConnected && publicKey) {
