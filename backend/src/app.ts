@@ -5,6 +5,7 @@ import express, {
 } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
 
 dotenv.config();
 import simulationRoutes from "./routes/simulationRoutes.js";
@@ -24,6 +25,22 @@ const app = express();
 // `TRUST_PROXY` env var; defaults to not trusting any proxy. Must be set
 // before any middleware that relies on `req.ip`.
 app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY));
+
+// Security headers (HSTS, X-Content-Type-Options, frame guard, etc.).
+// CSP is relaxed for inline assets required by Swagger UI at /api/docs.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }),
+);
 
 const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
   ? process.env.CORS_ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
