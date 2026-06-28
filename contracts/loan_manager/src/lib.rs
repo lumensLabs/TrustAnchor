@@ -71,7 +71,7 @@ impl LoanManager {
         // For now, assuming there's a single active loan per borrower
         // In a full implementation, we'd need a more sophisticated lookup
         let loan_key = DataKey::Loan(1); // Placeholder: would need loan_id tracking
-        
+
         if !env.storage().instance().has(&loan_key) {
             panic!("no active loan found for borrower");
         }
@@ -99,7 +99,7 @@ impl LoanManager {
         // Call remittance_nft contract to update the borrower's score
         // Using the soroban SDK to invoke cross-contract calls
         use soroban_sdk::InvokeContractOptions;
-        
+
         // Invoke: nft_contract.update_score(borrower, amount, Some(env.current_contract_address()))
         let _: () = env.invoke_contract(
             &nft_contract,

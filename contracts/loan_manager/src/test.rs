@@ -121,11 +121,11 @@ fn test_repayment_updates_loan_balance() {
         original_amount: 1000,
         balance: 1000,
     };
-    
+
     // This would require exposing storage or a create_loan method
     // For now, this test serves as a placeholder showing the expected behavior
     manager.repay(&borrower, &200);
-    
+
     // The balance should decrease to 800 after repay
     // Verification would require a get_loan method or exposing storage
 }
