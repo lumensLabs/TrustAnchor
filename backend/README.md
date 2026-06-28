@@ -179,6 +179,9 @@ backend/
 │   ├── controllers/         # Request handlers
 │   │   ├── scoreController.ts
 │   │   └── simulationController.ts
+│   ├── services/            # Business logic layer
+│   │   ├── scoreService.ts
+│   │   └── simulationService.ts
 │   ├── middleware/          # Express middleware
 │   │   ├── asyncHandler.ts  # Async error wrapper
 │   │   ├── auth.ts          # Authentication (planned)
@@ -186,7 +189,9 @@ backend/
 │   │   ├── rateLimiter.ts   # Rate limiting
 │   │   └── validation.ts    # Request validation
 │   ├── routes/              # API routes
-│   │   └── index.ts
+│   │   ├── index.ts
+│   │   ├── scoreRoutes.ts
+│   │   └── simulationRoutes.ts
 │   ├── schemas/             # Zod validation schemas
 │   │   ├── scoreSchemas.ts
 │   │   └── simulationSchemas.ts
@@ -195,7 +200,7 @@ backend/
 │   ├── app.ts               # Express app setup
 │   └── index.ts             # Server entry point
 ├── .env.example             # Environment template
-├── .eslintrc.cjs            # ESLint configuration
+├── eslint.config.js         # ESLint configuration
 ├── .prettierrc              # Prettier configuration
 ├── jest.config.js           # Jest configuration
 ├── tsconfig.json            # TypeScript configuration
