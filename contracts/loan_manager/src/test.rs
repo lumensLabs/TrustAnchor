@@ -1,4 +1,4 @@
-use crate::{LoanManager, LoanManagerClient};
+use crate::{Loan, LoanManager, LoanManagerClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]

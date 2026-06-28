@@ -98,7 +98,6 @@ impl LoanManager {
 
         // Call remittance_nft contract to update the borrower's score
         // Using the soroban SDK to invoke cross-contract calls
-        use soroban_sdk::InvokeContractOptions;
 
         // Invoke: nft_contract.update_score(borrower, amount, Some(env.current_contract_address()))
         let _: () = env.invoke_contract(
@@ -108,7 +107,7 @@ impl LoanManager {
                 &env,
                 borrower.into_val(&env),
                 amount.into_val(&env),
-                soroban_sdk::Option::<Address>::Some(env.current_contract_address()).into_val(&env),
+                Option::<Address>::Some(env.current_contract_address()).into_val(&env),
             ],
         );
 
