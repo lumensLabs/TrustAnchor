@@ -115,7 +115,7 @@ fn test_repayment_updates_loan_balance() {
     let borrower = Address::generate(&env);
 
     // Create a loan by manually setting it in storage
-    let loan = Loan {
+    let _loan = Loan {
         id: 1,
         borrower: borrower.clone(),
         original_amount: 1000,
