@@ -39,16 +39,42 @@ interface AuthProviderProps {
 
 const TOKEN_KEY = "auth_token";
 const EXPIRES_AT_KEY = "auth_expires_at";
-const REFRESH_THRESHOLD = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const { disconnect: disconnectWallet } = useWallet();
-  
-  const [state, setState] = useState<AuthState>({
-    token: null,
-    isAuthenticated: false,
-    expiresAt: null,
+
+  const [state, setState] = useState<AuthState>(() => {
+    if (typeof window === "undefined") {
+      return {
+        token: null,
+        isAuthenticated: false,
+        expiresAt: null,
+      };
+    }
+
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const storedExpiresAt = localStorage.getItem(EXPIRES_AT_KEY);
+
+    if (storedToken && storedExpiresAt) {
+      const expiresAt = parseInt(storedExpiresAt, 10);
+      if (Date.now() < expiresAt) {
+        return {
+          token: storedToken,
+          isAuthenticated: true,
+          expiresAt,
+        };
+      }
+
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(EXPIRES_AT_KEY);
+    }
+
+    return {
+      token: null,
+      isAuthenticated: false,
+      expiresAt: null,
+    };
   });
 
   /**
@@ -64,7 +90,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
    */
   const login = useCallback((token: string, expiresIn: number) => {
     const expiresAt = Date.now() + expiresIn * 1000;
-    
+
     setState({
       token,
       isAuthenticated: true,
@@ -102,83 +128,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * Returns true if successful, false otherwise
    */
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/refresh`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${state.token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Token refresh failed");
-      }
-
-      const data = await response.json();
-      login(data.token, data.expiresIn);
-      return true;
-    } catch (err) {
-      console.error("Failed to refresh token:", err);
+    if (!state.token || isTokenExpired()) {
       await logout();
       return false;
     }
-  }, [state.token, login, logout]);
+
+    return true;
+  }, [state.token, isTokenExpired, logout]);
 
   /**
-   * Restore auth state from localStorage on mount
-   */
-  useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedExpiresAt = localStorage.getItem(EXPIRES_AT_KEY);
-
-    if (storedToken && storedExpiresAt) {
-      const expiresAt = parseInt(storedExpiresAt, 10);
-      
-      // Check if token is still valid
-      if (Date.now() < expiresAt) {
-        setState({
-          token: storedToken,
-          isAuthenticated: true,
-          expiresAt,
-        });
-      } else {
-        // Token expired, clear storage
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(EXPIRES_AT_KEY);
-      }
-    }
-  }, []);
-
-  /**
-   * Monitor token expiration and auto-refresh or logout
+   * Monitor token expiration and logout when expired.
+   * No refresh call is attempted because backend refresh endpoint is not implemented.
    */
   useEffect(() => {
     if (!state.isAuthenticated || !state.expiresAt) return;
 
     const checkExpiration = () => {
-      const timeUntilExpiry = state.expiresAt! - Date.now();
-
-      if (timeUntilExpiry <= 0) {
-        // Token expired, logout immediately
+      if (Date.now() >= state.expiresAt!) {
         logout();
-      } else if (timeUntilExpiry <= REFRESH_THRESHOLD) {
-        // Token expiring soon, attempt refresh
-        refreshToken();
       }
     };
 
-    // Check immediately
     checkExpiration();
-
-    // Check every minute
     const interval = setInterval(checkExpiration, 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [state.isAuthenticated, state.expiresAt, logout, refreshToken]);
+  }, [state.isAuthenticated, state.expiresAt, logout]);
 
   /**
    * Listen for storage events (logout in another tab)
@@ -210,7 +185,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     window.addEventListener("auth_session_expired", handleSessionExpired);
-    return () => window.removeEventListener("auth_session_expired", handleSessionExpired);
+    return () =>
+      window.removeEventListener("auth_session_expired", handleSessionExpired);
   }, [logout]);
 
   const value: AuthContextValue = {
@@ -230,10 +206,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
  */
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
-  
+
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
-  
+
   return context;
 }
