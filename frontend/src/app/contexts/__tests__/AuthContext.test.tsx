@@ -199,4 +199,22 @@ describe("AuthContext", () => {
       expect(mockPush).toHaveBeenCalledWith("/");
     });
   });
+
+  it("should clear all wallet_ keys including wallet_connector_id on session expiry", async () => {
+    localStorageMock.setItem("wallet_connected", "true");
+    localStorageMock.setItem("wallet_public_key", "GPUBKEY123");
+    localStorageMock.setItem("wallet_connector_id", "freighter");
+
+    renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("auth_session_expired"));
+    });
+
+    await waitFor(() => {
+      expect(localStorageMock.getItem("wallet_connected")).toBeNull();
+      expect(localStorageMock.getItem("wallet_public_key")).toBeNull();
+      expect(localStorageMock.getItem("wallet_connector_id")).toBeNull();
+    });
+  });
 });

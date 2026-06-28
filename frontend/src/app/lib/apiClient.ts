@@ -65,6 +65,7 @@ export async function apiClient<T = unknown>(
       localStorage.removeItem("auth_expires_at");
       localStorage.removeItem("wallet_connected");
       localStorage.removeItem("wallet_public_key");
+      localStorage.removeItem("wallet_connector_id");
 
       // Dispatch custom event for auth context to handle
       window.dispatchEvent(new CustomEvent("auth_session_expired"));
