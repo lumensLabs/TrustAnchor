@@ -17,6 +17,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { AppError } from "./errors/AppError.js";
 import { parseTrustProxy } from "./config/trustProxy.js";
 import { getHealth } from "./controllers/healthController.js";
+import { morganMiddleware } from "./middleware/morgan.js";
 
 const app = express();
 
@@ -44,6 +45,7 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(morganMiddleware);
 app.use(express.json());
 app.use(globalRateLimiter);
 
