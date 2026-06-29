@@ -172,6 +172,98 @@ fn test_update_score_without_nft() {
 }
 
 #[test]
+#[should_panic(expected = "user does not have an NFT")]
+fn test_update_history_hash_without_nft() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let new_hash = create_test_hash(&env, 99);
+    client.update_history_hash(&user, &new_hash, &None);
+}
+
+#[test]
+#[should_panic(expected = "minter is not authorized")]
+fn test_mint_with_unauthorized_minter_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let unauthorized_minter = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let history_hash = create_test_hash(&env, 7);
+    client.mint(&user, &500, &history_hash, &Some(unauthorized_minter));
+}
+
+#[test]
+#[should_panic(expected = "minter is not authorized")]
+fn test_update_with_revoked_minter_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let minter = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&minter);
+
+    let history_hash = create_test_hash(&env, 8);
+    client.mint(&user, &500, &history_hash, &Some(minter.clone()));
+
+    client.revoke_minter(&minter);
+    client.update_score(&user, &100, &Some(minter));
+}
+
+#[test]
+fn test_get_metadata_migrates_legacy_score() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    use super::DataKey;
+    let score_key = DataKey::Score(user.clone());
+    let metadata_key = DataKey::Metadata(user.clone());
+
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().set(&score_key, &777u32);
+        assert!(!env.storage().persistent().has(&metadata_key));
+    });
+
+    let metadata = client.get_metadata(&user).unwrap();
+    assert_eq!(metadata.score, 777);
+    assert_eq!(metadata.history_hash, BytesN::from_array(&env, &[0u8; 32]));
+
+    env.as_contract(&contract_id, || {
+        assert!(!env.storage().persistent().has(&score_key));
+        assert!(env.storage().persistent().has(&metadata_key));
+    });
+}
+
+#[test]
 fn test_backward_compatibility_migration() {
     let env = Env::default();
     env.mock_all_auths();
