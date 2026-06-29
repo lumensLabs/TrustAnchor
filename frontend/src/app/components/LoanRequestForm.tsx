@@ -1,7 +1,8 @@
 "use client";
+/* eslint-disable react-hooks/incompatible-library */
 
 import { useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -101,7 +102,7 @@ export default function LoanRequestForm() {
   const {
     register,
     handleSubmit,
-    control,
+    watch,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoanFormData>({
@@ -112,10 +113,10 @@ export default function LoanRequestForm() {
     },
   });
 
-  const watchAmount = useWatch({ control, name: "amount" });
-  const watchDuration = useWatch({ control, name: "duration" });
-  const watchNft = useWatch({ control, name: "useNftCollateral" });
-  const watchAgreeFees = useWatch({ control, name: "agreeFees" });
+  const watchAmount = watch("amount");
+  const watchDuration = watch("duration");
+  const watchNft = watch("useNftCollateral");
+  const watchAgreeFees = watch("agreeFees");
 
   const rate = watchDuration ? getRate(watchDuration) : null;
   const monthly =
@@ -512,7 +513,7 @@ export default function LoanRequestForm() {
                   className={`w-5 h-5 border rounded-sm flex items-center justify-center transition-colors ${
                     errors.agreeFees
                       ? "border-red-500/60"
-                      : watchAgreeFees
+                      : watch("agreeFees")
                         ? "border-emerald-500 bg-emerald-500/20"
                         : "border-white/20 group-hover:border-white/40"
                   }`}

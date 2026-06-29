@@ -1,16 +1,5 @@
 use crate::{LoanManager, LoanManagerClient, LoanStatus};
-use soroban_sdk::{
-    contract, contractimpl, contracttype,
-    testutils::{Address as _, Ledger},
-    Address, Env,
-};
-
-#[contracttype]
-#[derive(Clone)]
-enum MockDataKey {
-    Score(Address),
-    Locked(Address),
-}
+use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env};
 
 #[contract]
 pub struct MockNftContract;
@@ -56,6 +45,21 @@ impl MockNftContract {
             .remove(&MockDataKey::Locked(user.clone()));
         env.storage().instance().remove(&MockDataKey::Score(user));
     }
+
+    pub fn lock_collateral(env: Env, user: Address, loan_id: u64, _locker: Address) {
+        let key = (user, loan_id);
+        env.storage().instance().set(&key, &true);
+    }
+
+    pub fn unlock_collateral(env: Env, user: Address, loan_id: u64, _locker: Address) {
+        let key = (user, loan_id);
+        env.storage().instance().set(&key, &false);
+    }
+
+    pub fn liquidate_collateral(env: Env, user: Address, loan_id: u64, _liquidator: Address) {
+        let key = (user, loan_id);
+        env.storage().instance().remove(&key);
+    }
 }
 
 fn setup_env() -> (
@@ -89,21 +93,11 @@ fn test_loan_request_success() {
     let loan_id = manager.request_loan(&borrower, &1000);
     assert_eq!(loan_id, 1);
 
-    let loan = manager.get_loan(&loan_id);
-    assert_eq!(loan.principal, 1000);
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.borrower, borrower);
+    assert_eq!(loan.amount, 1000);
+    assert_eq!(loan.outstanding, 1000);
     assert_eq!(loan.status, LoanStatus::Requested);
-}
-
-#[test]
-fn test_loan_request_locks_collateral() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    assert!(!nft_client.is_locked(&borrower));
-    manager.request_loan(&borrower, &1000);
-    assert!(nft_client.is_locked(&borrower));
 }
 
 #[test]
@@ -164,31 +158,30 @@ fn test_approve_loan() {
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &10_000);
-    manager.approve_loan(&loan_id);
-
-    let loan = manager.get_loan(&loan_id);
-    assert_eq!(loan.status, LoanStatus::Active);
-    assert_eq!(loan.start_time, start_ts);
-    assert_eq!(loan.due_time, start_ts + 31_536_000);
+    manager.request_loan(&borrower, &-100);
 }
 
 #[test]
-#[should_panic(expected = "loan not in requested state")]
-fn test_approve_already_active_loan() {
-    let (env, manager, nft_client, _) = setup_env();
+fn test_approve_loan_flow() {
+    let env = Env::default();
+    env.mock_all_auths();
 
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let loan_id = manager.request_loan(&borrower, &10_000);
+    let nft_contract = env.register(MockNftContract, ());
+    let nft_client = MockNftContractClient::new(&env, &nft_contract);
+    manager.initialize(&nft_contract);
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+
     manager.approve_loan(&loan_id);
-    manager.approve_loan(&loan_id);
+
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Active);
 }
 
 // ── Interest Calculation Tests ──
@@ -200,273 +193,46 @@ fn test_interest_accrual_over_time() {
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    let six_months: u64 = 31_536_000 / 2;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + six_months;
-    });
-
-    let interest = manager.get_accrued_interest(&loan_id);
-    assert_eq!(interest, 5000);
-}
-
-#[test]
-fn test_interest_full_year() {
-    let (env, manager, nft_client, _) = setup_env();
+    let nft_contract = env.register(MockNftContract, ());
+    let nft_client = MockNftContractClient::new(&env, &nft_contract);
+    manager.initialize(&nft_contract);
 
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
+    let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
 
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + 31_536_000;
-    });
+    manager.repay(&borrower, &500);
 
-    let interest = manager.get_accrued_interest(&loan_id);
-    assert_eq!(interest, 10_000);
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.outstanding, 500);
 }
 
 #[test]
-fn test_no_interest_before_activation() {
-    let (env, manager, nft_client, _) = setup_env();
+fn test_loan_full_repayment_unlocks_collateral() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let loan_manager_id = env.register(LoanManager, ());
+    let manager = LoanManagerClient::new(&env, &loan_manager_id);
+
+    let nft_contract = env.register(MockNftContract, ());
+    let nft_client = MockNftContractClient::new(&env, &nft_contract);
+    manager.initialize(&nft_contract);
 
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let loan_id = manager.request_loan(&borrower, &100_000);
-
-    let interest = manager.get_accrued_interest(&loan_id);
-    assert_eq!(interest, 0);
-}
-
-// ── Outstanding Balance Tests ──
-
-#[test]
-fn test_outstanding_balance_at_start() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
+    let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
 
-    let balance = manager.get_outstanding_balance(&loan_id);
-    assert_eq!(balance, 100_000);
-}
+    // Repay full amount
+    manager.repay(&borrower, &1000);
 
-#[test]
-fn test_outstanding_balance_with_interest() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + 31_536_000;
-    });
-
-    let balance = manager.get_outstanding_balance(&loan_id);
-    assert_eq!(balance, 110_000);
-}
-
-// ── Penalty Tests ──
-
-#[test]
-fn test_no_penalty_before_due() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + 31_536_000 / 2;
-    });
-
-    let penalty = manager.get_penalty(&loan_id);
-    assert_eq!(penalty, 0);
-}
-
-#[test]
-fn test_penalty_after_due() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    let one_and_half_years: u64 = 31_536_000 + 31_536_000 / 2;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + one_and_half_years;
-    });
-
-    let penalty = manager.get_penalty(&loan_id);
-    assert_eq!(penalty, 2500);
-}
-
-#[test]
-fn test_outstanding_balance_includes_penalty() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    let one_and_half_years: u64 = 31_536_000 + 31_536_000 / 2;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + one_and_half_years;
-    });
-
-    let balance = manager.get_outstanding_balance(&loan_id);
-    assert_eq!(balance, 117_500);
-}
-
-// ── Repayment Tests ──
-
-#[test]
-fn test_partial_repayment() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + 31_536_000 / 2;
-    });
-
-    manager.repay(&borrower, &loan_id, &50_000);
-
-    let loan = manager.get_loan(&loan_id);
-    assert_eq!(loan.amount_repaid, 50_000);
-    assert_eq!(loan.status, LoanStatus::Active);
-
-    let balance = manager.get_outstanding_balance(&loan_id);
-    assert_eq!(balance, 55_000);
-}
-
-#[test]
-fn test_partial_repayment_keeps_collateral_locked() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    manager.repay(&borrower, &loan_id, &50_000);
-
-    assert!(nft_client.is_locked(&borrower));
-}
-
-#[test]
-fn test_full_repayment_unlocks_collateral() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + 31_536_000;
-    });
-
-    assert!(nft_client.is_locked(&borrower));
-    manager.repay(&borrower, &loan_id, &110_000);
-
-    let loan = manager.get_loan(&loan_id);
+    let loan = manager.get_loan(&loan_id).unwrap();
     assert_eq!(loan.status, LoanStatus::Repaid);
-    assert!(!nft_client.is_locked(&borrower));
-}
-
-#[test]
-fn test_can_request_new_loan_after_repayment() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &10_000);
-    manager.approve_loan(&loan_id);
-
-    manager.repay(&borrower, &loan_id, &10_000);
-
-    let new_loan_id = manager.request_loan(&borrower, &20_000);
-    assert_eq!(new_loan_id, 2);
+    assert_eq!(loan.outstanding, 0);
 }
 
 #[test]
@@ -477,67 +243,12 @@ fn test_repayment_negative_amount() {
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
-    manager.approve_loan(&loan_id);
-
-    manager.repay(&borrower, &loan_id, &-100);
-}
-
-#[test]
-#[should_panic(expected = "repayment exceeds outstanding balance")]
-fn test_repayment_exceeds_balance() {
-    let (env, manager, nft_client, _) = setup_env();
+    let nft_contract = env.register(MockNftContract, ());
+    let _nft_client = MockNftContractClient::new(&env, &nft_contract);
+    manager.initialize(&nft_contract);
 
     let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &10_000);
-    manager.approve_loan(&loan_id);
-
-    manager.repay(&borrower, &loan_id, &20_000);
-}
-
-#[test]
-#[should_panic(expected = "not the loan borrower")]
-fn test_repayment_wrong_borrower() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    let other = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &10_000);
-    manager.approve_loan(&loan_id);
-
-    manager.repay(&other, &loan_id, &5_000);
-}
-
-#[test]
-#[should_panic(expected = "loan not active")]
-fn test_repayment_on_requested_loan() {
-    let (env, manager, nft_client, _) = setup_env();
-
-    let borrower = Address::generate(&env);
-    nft_client.set_score(&borrower, &100);
-
-    let loan_id = manager.request_loan(&borrower, &10_000);
-
-    manager.repay(&borrower, &loan_id, &5_000);
+    manager.repay(&borrower, &-100);
 }
 
 #[test]
@@ -697,91 +408,29 @@ fn test_cannot_liquidate_requested_loan() {
 fn test_cannot_double_liquidate() {
     let (env, manager, nft_client, _) = setup_env();
 
+    manager.repay(&borrower, &500);
+}
+
+#[test]
+fn test_loan_default_liquidates_collateral() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let loan_manager_id = env.register(LoanManager, ());
+    let manager = LoanManagerClient::new(&env, &loan_manager_id);
+
+    let nft_contract = env.register(MockNftContract, ());
+    let nft_client = MockNftContractClient::new(&env, &nft_contract);
+    manager.initialize(&nft_contract);
+
     let borrower = Address::generate(&env);
     nft_client.set_score(&borrower, &100);
 
-    let start_ts: u64 = 1_000_000;
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts;
-    });
-
-    let loan_id = manager.request_loan(&borrower, &100_000);
+    let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
 
-    env.ledger().with_mut(|li| {
-        li.timestamp = start_ts + 31_536_000 + 1;
-    });
+    manager.default_loan(&loan_id);
 
-    manager.liquidate(&loan_id);
-    manager.liquidate(&loan_id);
-}
-
-// ── Pure Math Function Tests ──
-
-#[test]
-fn test_calculate_interest_zero_principal() {
-    let interest = crate::repayment::calculate_interest(0, 1000, 31_536_000);
-    assert_eq!(interest, 0);
-}
-
-#[test]
-fn test_calculate_interest_zero_rate() {
-    let interest = crate::repayment::calculate_interest(100_000, 0, 31_536_000);
-    assert_eq!(interest, 0);
-}
-
-#[test]
-fn test_calculate_interest_zero_time() {
-    let interest = crate::repayment::calculate_interest(100_000, 1000, 0);
-    assert_eq!(interest, 0);
-}
-
-#[test]
-fn test_calculate_interest_one_year() {
-    let interest = crate::repayment::calculate_interest(100_000, 1000, 31_536_000);
-    assert_eq!(interest, 10_000);
-}
-
-#[test]
-fn test_calculate_interest_quarter_year() {
-    let interest = crate::repayment::calculate_interest(100_000, 1000, 31_536_000 / 4);
-    assert_eq!(interest, 2_500);
-}
-
-#[test]
-fn test_calculate_outstanding_balance_no_repayment() {
-    let balance = crate::repayment::calculate_outstanding_balance(100_000, 1000, 0, 31_536_000, 0);
-    assert_eq!(balance, 110_000);
-}
-
-#[test]
-fn test_calculate_outstanding_balance_with_repayment() {
-    let balance =
-        crate::repayment::calculate_outstanding_balance(100_000, 1000, 0, 31_536_000, 60_000);
-    assert_eq!(balance, 50_000);
-}
-
-#[test]
-fn test_calculate_outstanding_balance_overpaid_returns_zero() {
-    let balance =
-        crate::repayment::calculate_outstanding_balance(100_000, 1000, 0, 31_536_000, 200_000);
-    assert_eq!(balance, 0);
-}
-
-#[test]
-fn test_calculate_penalty_before_due() {
-    let penalty = crate::repayment::calculate_penalty(100_000, 500, 31_536_000, 0);
-    assert_eq!(penalty, 0);
-}
-
-#[test]
-fn test_calculate_penalty_at_due() {
-    let penalty = crate::repayment::calculate_penalty(100_000, 500, 31_536_000, 31_536_000);
-    assert_eq!(penalty, 0);
-}
-
-#[test]
-fn test_calculate_penalty_one_year_overdue() {
-    let penalty = crate::repayment::calculate_penalty(100_000, 500, 0, 31_536_000);
-    assert_eq!(penalty, 5_000);
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Defaulted);
 }

@@ -10,12 +10,19 @@ pub struct RemittanceMetadata {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct CollateralInfo {
+    pub locked: bool,
+    pub loan_id: u64,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Metadata(Address),
     Score(Address), // Legacy key for backward compatibility
     Admin,
     AuthorizedMinter(Address),
-    CollateralLock(Address),
+    Collateral(Address), // Track collateral state for each user
 }
 
 #[contract]
@@ -351,6 +358,175 @@ impl RemittanceNFT {
         metadata.history_hash = new_history_hash;
 
         env.storage().persistent().set(&metadata_key, &metadata);
+    }
+
+    /// Lock collateral (NFT) for a loan
+    /// Only authorized contracts can call this function
+    /// The user's NFT is locked until explicitly unlocked or liquidated
+    pub fn lock_collateral(env: Env, user: Address, loan_id: u64, locker: Address) {
+        let _admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+
+        // Require locker authorization and check authorization
+        locker.require_auth();
+        let is_authorized = env
+            .storage()
+            .instance()
+            .get(&DataKey::AuthorizedMinter(locker))
+            .unwrap_or(false);
+        if !is_authorized {
+            panic!("locker is not authorized");
+        }
+
+        // Verify user has an NFT
+        let metadata_key = DataKey::Metadata(user.clone());
+        if !env.storage().persistent().has(&metadata_key) {
+            panic!("user does not have an NFT");
+        }
+
+        let collateral_key = DataKey::Collateral(user.clone());
+
+        // Check if already locked
+        if let Some(collateral) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, CollateralInfo>(&collateral_key)
+        {
+            if collateral.locked {
+                panic!("collateral already locked");
+            }
+        }
+
+        let collateral_info = CollateralInfo {
+            locked: true,
+            loan_id,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&collateral_key, &collateral_info);
+    }
+
+    /// Unlock collateral (NFT) after loan repayment
+    /// Only authorized contracts can call this function
+    pub fn unlock_collateral(env: Env, user: Address, loan_id: u64, locker: Address) {
+        let _admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+
+        // Require locker authorization and check authorization
+        locker.require_auth();
+        let is_authorized = env
+            .storage()
+            .instance()
+            .get(&DataKey::AuthorizedMinter(locker))
+            .unwrap_or(false);
+        if !is_authorized {
+            panic!("locker is not authorized");
+        }
+
+        let collateral_key = DataKey::Collateral(user.clone());
+
+        // Check if locked and matches the loan_id
+        if let Some(collateral) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, CollateralInfo>(&collateral_key)
+        {
+            if !collateral.locked {
+                panic!("collateral is not locked");
+            }
+            if collateral.loan_id != loan_id {
+                panic!("collateral locked for different loan");
+            }
+        } else {
+            panic!("collateral info not found");
+        }
+
+        let unlocked_collateral = CollateralInfo {
+            locked: false,
+            loan_id,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&collateral_key, &unlocked_collateral);
+    }
+
+    /// Liquidate collateral (NFT) due to loan default
+    /// Only authorized contracts can call this function
+    /// Returns the collateral to the pool for liquidation
+    pub fn liquidate_collateral(env: Env, user: Address, loan_id: u64, liquidator: Address) {
+        let _admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+
+        // Require liquidator authorization and check authorization
+        liquidator.require_auth();
+        let is_authorized = env
+            .storage()
+            .instance()
+            .get(&DataKey::AuthorizedMinter(liquidator))
+            .unwrap_or(false);
+        if !is_authorized {
+            panic!("liquidator is not authorized");
+        }
+
+        let collateral_key = DataKey::Collateral(user.clone());
+
+        // Check if locked and matches the loan_id
+        if let Some(collateral) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, CollateralInfo>(&collateral_key)
+        {
+            if !collateral.locked {
+                panic!("collateral is not locked");
+            }
+            if collateral.loan_id != loan_id {
+                panic!("collateral locked for different loan");
+            }
+        } else {
+            panic!("collateral info not found");
+        }
+
+        // Remove collateral info (liquidated)
+        env.storage().persistent().remove(&collateral_key);
+    }
+
+    /// Check if a user's collateral is locked
+    pub fn is_collateral_locked(env: Env, user: Address) -> bool {
+        let collateral_key = DataKey::Collateral(user);
+        if let Some(collateral) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, CollateralInfo>(&collateral_key)
+        {
+            return collateral.locked;
+        }
+        false
+    }
+
+    /// Get the loan ID for which collateral is locked
+    pub fn get_collateral_loan(env: Env, user: Address) -> Option<u64> {
+        let collateral_key = DataKey::Collateral(user);
+        if let Some(collateral) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, CollateralInfo>(&collateral_key)
+        {
+            if collateral.locked {
+                return Some(collateral.loan_id);
+            }
+        }
+        None
     }
 }
 
