@@ -78,6 +78,17 @@ impl LoanManager {
             .unwrap_or(0)
             + 1;
 
+        // Lock the borrower's NFT as collateral
+        env.invoke_contract::<()>(
+            &nft_contract,
+            &Symbol::new(&env, "lock_collateral"),
+            soroban_sdk::vec![
+                &env,
+                borrower.into_val(&env),
+                env.current_contract_address().into_val(&env)
+            ],
+        );
+
         let loan = Loan {
             borrower: borrower.clone(),
             principal: amount,
@@ -94,7 +105,8 @@ impl LoanManager {
             .set(&DataKey::Loan(loan_id), &loan);
         env.storage().instance().set(&DataKey::LoanCount, &loan_id);
 
-        events::loan_requested(&env, borrower, amount);
+        events::loan_requested(&env, borrower.clone(), amount);
+        events::collateral_locked(&env, borrower, loan_id);
         loan_id
     }
 
@@ -153,12 +165,71 @@ impl LoanManager {
         let new_outstanding = Self::_outstanding_balance(&loan, now);
         if new_outstanding <= 0 {
             loan.status = LoanStatus::Repaid;
+
+            // Unlock the borrower's NFT collateral
+            let nft_contract: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::NftContract)
+                .expect("not initialized");
+
+            env.invoke_contract::<()>(
+                &nft_contract,
+                &Symbol::new(&env, "unlock_collateral"),
+                soroban_sdk::vec![
+                    &env,
+                    borrower.into_val(&env),
+                    env.current_contract_address().into_val(&env)
+                ],
+            );
+
+            events::collateral_unlocked(&env, borrower.clone(), loan_id);
         }
 
         env.storage()
             .persistent()
             .set(&DataKey::Loan(loan_id), &loan);
         events::loan_repaid(&env, borrower, amount);
+    }
+
+    pub fn liquidate(env: Env, loan_id: u32) {
+        let mut loan: Loan = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Loan(loan_id))
+            .expect("loan not found");
+
+        if loan.status != LoanStatus::Active {
+            panic!("loan not active");
+        }
+
+        let now = env.ledger().timestamp();
+        if now <= loan.due_time {
+            panic!("loan not yet overdue");
+        }
+
+        loan.status = LoanStatus::Defaulted;
+
+        let nft_contract: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::NftContract)
+            .expect("not initialized");
+
+        env.invoke_contract::<()>(
+            &nft_contract,
+            &Symbol::new(&env, "seize_collateral"),
+            soroban_sdk::vec![
+                &env,
+                loan.borrower.clone().into_val(&env),
+                env.current_contract_address().into_val(&env)
+            ],
+        );
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Loan(loan_id), &loan);
+        events::loan_defaulted(&env, loan_id);
     }
 
     pub fn get_loan(env: Env, loan_id: u32) -> Loan {
