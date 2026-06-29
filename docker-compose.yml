@@ -1,4 +1,16 @@
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: remitlend
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -9,5 +21,11 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - ./backend/src:/app/src  
+      - ./backend/src:/app/src
+      - ./backend/migrations:/app/migrations
+    depends_on:
+      - postgres
     restart: unless-stopped
+
+volumes:
+  pgdata:
