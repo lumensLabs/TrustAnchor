@@ -1,7 +1,9 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, IntoVal, Symbol};
 
 mod events;
+
+const MIN_SCORE: u32 = 50;
 
 #[contracttype]
 #[derive(Clone)]
@@ -21,14 +23,21 @@ impl LoanManager {
     }
 
     pub fn request_loan(env: Env, borrower: Address, amount: i128) {
-        let _nft_contract: Address = env
+        let nft_contract: Address = env
             .storage()
             .instance()
             .get(&DataKey::NftContract)
             .expect("not initialized");
 
-        // For now, just assume all borrowers have sufficient score
-        // In a real implementation, you'd call the NFT contract to get the score
+        let score: u32 = env.invoke_contract(
+            &nft_contract,
+            &Symbol::new(&env, "get_score"),
+            soroban_sdk::vec![&env, borrower.into_val(&env)],
+        );
+
+        if score < MIN_SCORE {
+            panic!("borrower score below threshold");
+        }
 
         if amount <= 0 {
             panic!("loan amount must be positive");
