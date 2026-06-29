@@ -172,6 +172,98 @@ fn test_update_score_without_nft() {
 }
 
 #[test]
+#[should_panic(expected = "user does not have an NFT")]
+fn test_update_history_hash_without_nft() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let new_hash = create_test_hash(&env, 99);
+    client.update_history_hash(&user, &new_hash, &None);
+}
+
+#[test]
+#[should_panic(expected = "minter is not authorized")]
+fn test_mint_with_unauthorized_minter_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let unauthorized_minter = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let history_hash = create_test_hash(&env, 7);
+    client.mint(&user, &500, &history_hash, &Some(unauthorized_minter));
+}
+
+#[test]
+#[should_panic(expected = "minter is not authorized")]
+fn test_update_with_revoked_minter_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let minter = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&minter);
+
+    let history_hash = create_test_hash(&env, 8);
+    client.mint(&user, &500, &history_hash, &Some(minter.clone()));
+
+    client.revoke_minter(&minter);
+    client.update_score(&user, &100, &Some(minter));
+}
+
+#[test]
+fn test_get_metadata_migrates_legacy_score() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    use super::DataKey;
+    let score_key = DataKey::Score(user.clone());
+    let metadata_key = DataKey::Metadata(user.clone());
+
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().set(&score_key, &777u32);
+        assert!(!env.storage().persistent().has(&metadata_key));
+    });
+
+    let metadata = client.get_metadata(&user).unwrap();
+    assert_eq!(metadata.score, 777);
+    assert_eq!(metadata.history_hash, BytesN::from_array(&env, &[0u8; 32]));
+
+    env.as_contract(&contract_id, || {
+        assert!(!env.storage().persistent().has(&score_key));
+        assert!(env.storage().persistent().has(&metadata_key));
+    });
+}
+
+#[test]
 fn test_backward_compatibility_migration() {
     let env = Env::default();
     env.mock_all_auths();
@@ -254,6 +346,241 @@ fn test_update_score_migrates_legacy_data() {
 
     let metadata = client.get_metadata(&user).unwrap();
     assert_eq!(metadata.score, 602);
+}
+
+// ── Collateral Management Tests ──
+
+#[test]
+fn test_lock_collateral() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    assert!(!client.is_locked(&user));
+    client.lock_collateral(&user, &loan_manager);
+    assert!(client.is_locked(&user));
+}
+
+#[test]
+#[should_panic(expected = "collateral already locked")]
+fn test_lock_already_locked() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &loan_manager);
+    client.lock_collateral(&user, &loan_manager);
+}
+
+#[test]
+#[should_panic(expected = "user does not have an NFT")]
+fn test_lock_no_nft() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    client.lock_collateral(&user, &loan_manager);
+}
+
+#[test]
+#[should_panic(expected = "not authorized to manage collateral")]
+fn test_lock_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &unauthorized);
+}
+
+#[test]
+fn test_unlock_collateral() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &loan_manager);
+    assert!(client.is_locked(&user));
+
+    client.unlock_collateral(&user, &loan_manager);
+    assert!(!client.is_locked(&user));
+}
+
+#[test]
+#[should_panic(expected = "collateral not locked")]
+fn test_unlock_not_locked() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.unlock_collateral(&user, &loan_manager);
+}
+
+#[test]
+#[should_panic(expected = "only the original locker can unlock")]
+fn test_unlock_wrong_locker() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let locker1 = Address::generate(&env);
+    let locker2 = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&locker1);
+    client.authorize_minter(&locker2);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &locker1);
+    client.unlock_collateral(&user, &locker2);
+}
+
+#[test]
+fn test_seize_collateral() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &loan_manager);
+    client.seize_collateral(&user, &loan_manager);
+
+    assert!(!client.is_locked(&user));
+    assert!(client.get_metadata(&user).is_none());
+    assert_eq!(client.get_score(&user), 0);
+}
+
+#[test]
+#[should_panic(expected = "only the original locker can seize")]
+fn test_seize_wrong_locker() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let locker1 = Address::generate(&env);
+    let locker2 = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&locker1);
+    client.authorize_minter(&locker2);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &locker1);
+    client.seize_collateral(&user, &locker2);
+}
+
+#[test]
+fn test_relock_after_unlock() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let loan_manager = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&loan_manager);
+
+    let hash = create_test_hash(&env, 1);
+    client.mint(&user, &500, &hash, &None);
+
+    client.lock_collateral(&user, &loan_manager);
+    client.unlock_collateral(&user, &loan_manager);
+    client.lock_collateral(&user, &loan_manager);
+    assert!(client.is_locked(&user));
 }
 
 #[test]
