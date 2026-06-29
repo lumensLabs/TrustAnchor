@@ -2,8 +2,34 @@
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, IntoVal, Symbol};
 
 mod events;
+pub mod repayment;
 
 const MIN_SCORE: u32 = 50;
+const DEFAULT_INTEREST_RATE_BPS: u32 = 1000; // 10% annual
+const DEFAULT_PENALTY_RATE_BPS: u32 = 500; // 5% annual penalty
+const DEFAULT_LOAN_DURATION: u64 = 31_536_000; // 1 year in seconds
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum LoanStatus {
+    Requested,
+    Active,
+    Repaid,
+    Defaulted,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Loan {
+    pub borrower: Address,
+    pub principal: i128,
+    pub interest_rate_bps: u32,
+    pub penalty_rate_bps: u32,
+    pub start_time: u64,
+    pub due_time: u64,
+    pub amount_repaid: i128,
+    pub status: LoanStatus,
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -130,7 +156,7 @@ impl LoanManager {
         events::loan_approved(&env, loan_id);
     }
 
-    pub fn repay(env: Env, borrower: Address, amount: i128) {
+    pub fn repay(env: Env, borrower: Address, loan_id: u32, amount: i128) {
         borrower.require_auth();
 
         if amount <= 0 {

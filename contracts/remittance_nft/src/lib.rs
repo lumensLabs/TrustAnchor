@@ -225,6 +225,84 @@ impl RemittanceNFT {
         env.storage().persistent().set(&metadata_key, &metadata);
     }
 
+    pub fn lock_collateral(env: Env, user: Address, locker: Address) {
+        locker.require_auth();
+
+        let is_authorized: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::AuthorizedMinter(locker.clone()))
+            .unwrap_or(false);
+        if !is_authorized {
+            panic!("not authorized to manage collateral");
+        }
+
+        let has_nft = env
+            .storage()
+            .persistent()
+            .has(&DataKey::Metadata(user.clone()))
+            || env
+                .storage()
+                .persistent()
+                .has(&DataKey::Score(user.clone()));
+        if !has_nft {
+            panic!("user does not have an NFT");
+        }
+
+        let lock_key = DataKey::CollateralLock(user.clone());
+        if env.storage().persistent().has(&lock_key) {
+            panic!("collateral already locked");
+        }
+
+        env.storage().persistent().set(&lock_key, &locker);
+    }
+
+    pub fn unlock_collateral(env: Env, user: Address, locker: Address) {
+        locker.require_auth();
+
+        let lock_key = DataKey::CollateralLock(user.clone());
+        let current_locker: Address = env
+            .storage()
+            .persistent()
+            .get(&lock_key)
+            .expect("collateral not locked");
+
+        if current_locker != locker {
+            panic!("only the original locker can unlock");
+        }
+
+        env.storage().persistent().remove(&lock_key);
+    }
+
+    pub fn is_locked(env: Env, user: Address) -> bool {
+        env.storage()
+            .persistent()
+            .has(&DataKey::CollateralLock(user))
+    }
+
+    pub fn seize_collateral(env: Env, user: Address, locker: Address) {
+        locker.require_auth();
+
+        let lock_key = DataKey::CollateralLock(user.clone());
+        let current_locker: Address = env
+            .storage()
+            .persistent()
+            .get(&lock_key)
+            .expect("collateral not locked");
+
+        if current_locker != locker {
+            panic!("only the original locker can seize");
+        }
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Metadata(user.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Score(user.clone()));
+        env.storage().persistent().remove(&lock_key);
+    }
+
     /// Update the history hash for a user's NFT
     /// Only authorized contracts/accounts can call this function
     /// If minter is provided, it must be authorized and must authorize the call

@@ -16,6 +16,7 @@ import { globalRateLimiter } from "./middleware/rateLimiter.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { AppError } from "./errors/AppError.js";
 import { parseTrustProxy } from "./config/trustProxy.js";
+import { getHealth } from "./controllers/healthController.js";
 
 const app = express();
 
@@ -50,13 +51,7 @@ app.get("/", (req: Request, res: Response) => {
   res.send("RemitLend Backend is running");
 });
 
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: Date.now(),
-  });
-});
+app.get("/health", getHealth);
 
 app.use("/api", simulationRoutes);
 app.use("/api/score", scoreRoutes);

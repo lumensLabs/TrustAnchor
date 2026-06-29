@@ -21,11 +21,23 @@ export function WalletButton() {
     connect,
     disconnect,
   } = useWallet();
-  const { logout } = useAuth();
+  const { login, logout } = useAuth();
 
   const handleDisconnect = async () => {
     await disconnect();
     await logout();
+  };
+
+  const handleConnect = async () => {
+    await connect();
+
+    const connectedPublicKey = localStorage.getItem("wallet_public_key");
+    if (!connectedPublicKey) {
+      return;
+    }
+
+    const sessionToken = `wallet:${connectedPublicKey}:${Date.now()}`;
+    login(sessionToken, 60 * 60);
   };
 
   if (isConnected && publicKey) {
@@ -54,15 +66,13 @@ export function WalletButton() {
   return (
     <div className="flex flex-col items-end gap-2">
       <Button
-        onClick={connect}
+        onClick={handleConnect}
         disabled={isConnecting}
         aria-label="Connect wallet"
       >
         {isConnecting ? "Connecting..." : "Connect Wallet"}
       </Button>
-      {error && (
-        <span className="text-sm text-red-600">{error}</span>
-      )}
+      {error && <span className="text-sm text-red-600">{error}</span>}
     </div>
   );
 }
