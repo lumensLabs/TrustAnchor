@@ -36,7 +36,7 @@ function computeScoreDelta(amount: number): number {
 
 export const getRemittanceHistory = asyncHandler(
   async (req: Request, res: Response) => {
-    const { userId } = req.params;
+    const userId = String(req.params.userId);
 
     // Generate a deterministic history based on userId so the same user
     // always gets the same mock history (consistent with the score endpoint).
@@ -64,8 +64,8 @@ export const getRemittanceHistory = asyncHandler(
     }
 
     const history = [0, 1, 2].map((offset) => ({
-      month: months[(hash + offset) % 12],
-      amount: amounts[(hash + offset) % amounts.length],
+      month: months[(hash + offset) % 12]!,
+      amount: amounts[(hash + offset) % amounts.length]!,
       status: "Completed",
     }));
 
@@ -85,7 +85,8 @@ export const getRemittanceHistory = asyncHandler(
 
 export const simulatePayment = asyncHandler(
   async (req: Request, res: Response) => {
-    const { userId, amount } = req.body;
+    const userId = String(req.body.userId);
+    const amount = Number(req.body.amount);
 
     const currentScore = baseScoreForUser(userId);
     const delta = computeScoreDelta(amount);
