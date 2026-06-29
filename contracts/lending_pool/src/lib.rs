@@ -7,6 +7,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 pub enum DataKey {
     Token,
     Deposit(Address),
+    TotalDeposits,
 }
 
 #[contract]
@@ -19,6 +20,9 @@ impl LendingPool {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Token, &token);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TotalDeposits, &(0i128));
     }
 
     pub fn deposit(env: Env, provider: Address, amount: i128) {
@@ -37,6 +41,15 @@ impl LendingPool {
         let mut current_balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         current_balance += amount;
         env.storage().persistent().set(&key, &current_balance);
+        let mut total_deposits: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalDeposits)
+            .unwrap_or(0);
+        total_deposits += amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TotalDeposits, &total_deposits);
         env.events()
             .publish((symbol_short!("Deposit"), provider), amount);
     }
@@ -44,6 +57,13 @@ impl LendingPool {
     pub fn get_deposit(env: Env, provider: Address) -> i128 {
         let key = DataKey::Deposit(provider);
         env.storage().persistent().get(&key).unwrap_or(0)
+    }
+
+    pub fn get_total_deposits(env: Env) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::TotalDeposits)
+            .unwrap_or(0)
     }
 
     pub fn withdraw(env: Env, provider: Address, amount: i128) {
@@ -56,6 +76,19 @@ impl LendingPool {
         if current_balance < amount {
             panic!("insufficient balance");
         }
+        // Effects: update stored balances before external interaction
+        let new_balance = current_balance - amount;
+        env.storage().persistent().set(&key, &new_balance);
+        let mut total_deposits: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalDeposits)
+            .unwrap_or(0);
+        total_deposits -= amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TotalDeposits, &total_deposits);
+        // Interaction: transfer tokens only after state is updated
         let token: Address = env
             .storage()
             .instance()
@@ -63,9 +96,6 @@ impl LendingPool {
             .expect("not initialized");
         let token_client = TokenClient::new(&env, &token);
         token_client.transfer(&env.current_contract_address(), &provider, &amount);
-        env.storage()
-            .persistent()
-            .set(&key, &(current_balance - amount));
         env.events()
             .publish((symbol_short!("Withdraw"), provider), amount);
     }
