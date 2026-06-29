@@ -69,8 +69,8 @@ npm start            # Run production build
 
 # Testing
 npm test             # Run test suite
-npm test -- --watch  # Run tests in watch mode
-npm test -- --coverage  # Run tests with coverage
+npm run test:watch   # Run tests in watch mode
+npm run test:coverage  # Run tests with coverage
 
 # Code Quality
 npm run lint         # Check code quality
@@ -83,7 +83,7 @@ npm run format:check # Check code formatting
 
 ### Health Check
 
-**GET** `/api/health`
+**GET** `/health`
 
 Check if the API is running.
 
@@ -91,7 +91,8 @@ Check if the API is running.
 ```json
 {
   "status": "ok",
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "uptime": 123.456,
+  "timestamp": 1705312200000
 }
 ```
 
@@ -198,6 +199,7 @@ backend/
 ├── .eslintrc.cjs            # ESLint configuration
 ├── .prettierrc              # Prettier configuration
 ├── jest.config.js           # Jest configuration
+├── jest.setup.ts            # Jest global test setup
 ├── tsconfig.json            # TypeScript configuration
 ├── package.json
 └── README.md
@@ -258,10 +260,10 @@ npm test
 npm test -- health.test.ts
 
 # Run with coverage
-npm test -- --coverage
+npm run test:coverage
 
 # Watch mode
-npm test -- --watch
+npm run test:watch
 ```
 
 ### Test Structure
@@ -270,12 +272,12 @@ npm test -- --watch
 import request from 'supertest';
 import app from '../app';
 
-describe('GET /api/health', () => {
+describe('GET /health', () => {
   it('should return 200 OK', async () => {
     const response = await request(app)
-      .get('/api/health')
+      .get('/health')
       .expect(200);
-    
+
     expect(response.body).toHaveProperty('status', 'ok');
   });
 });

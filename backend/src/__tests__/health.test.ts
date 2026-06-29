@@ -2,24 +2,30 @@ import request from "supertest";
 import app from "../app.js";
 
 describe("GET /health", () => {
-  it("should return status ok with 200", async () => {
-    const response = await request(app).get("/health");
+  it("should return 200 OK with status ok", async () => {
+    const response = await request(app).get("/health").expect(200);
 
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("status", "ok");
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        uptime: expect.any(Number),
+        timestamp: expect.any(Number),
+      }),
+    );
   });
 
-  it("should return uptime as a number", async () => {
+  it("should return uptime as a non-negative number", async () => {
     const response = await request(app).get("/health");
 
-    expect(response.body).toHaveProperty("uptime");
-    expect(typeof response.body.uptime).toBe("number");
+    expect(response.body.uptime).toBeGreaterThanOrEqual(0);
   });
 
-  it("should return timestamp as a number", async () => {
+  it("should return a recent timestamp", async () => {
+    const before = Date.now();
     const response = await request(app).get("/health");
+    const after = Date.now();
 
-    expect(response.body).toHaveProperty("timestamp");
-    expect(typeof response.body.timestamp).toBe("number");
+    expect(response.body.timestamp).toBeGreaterThanOrEqual(before);
+    expect(response.body.timestamp).toBeLessThanOrEqual(after);
   });
 });
