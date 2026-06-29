@@ -52,22 +52,6 @@ export const getRemittanceHistory = asyncHandler(
       score = scoreRows[0].current_score;
     }
 
-    // Derive 3 history rows from the userId hash so the data varies per user.
-    let hash = 0;
-    for (let i = 0; i < userId.length; i++) {
-      hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-    }
-
-    const history = [0, 1, 2].map((offset) => ({
-      month: months[(hash + offset) % 12]!,
-      amount: amounts[(hash + offset) % amounts.length]!,
-      status: "Completed",
-    }));
-
-    // Derive score and streak from the history rather than fixed literals.
-    const streak = history.length; // all completed
-    const totalPaid = history.reduce((sum, row) => sum + row.amount, 0);
-    const score = Math.min(850, base + Math.floor(totalPaid / 100));
 
     res.json({
       userId,
