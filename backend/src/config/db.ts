@@ -7,7 +7,7 @@ class DummyPool {
   async query(text: string, params?: any[]) {
     // Return dummy data for tests
     if (text.includes("SELECT current_score FROM scores")) {
-      return { rows: [{ current_score: 500 }] };
+      return { rows: [] };
     }
     if (text.includes("SELECT amount, month, status FROM remittance_history")) {
       return { rows: [] };
