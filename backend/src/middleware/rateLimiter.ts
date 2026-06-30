@@ -37,5 +37,10 @@ export const createRateLimiter = (
     ...options,
   });
 
-export const globalRateLimiter = createRateLimiter(100);
-export const strictRateLimiter = createRateLimiter(10, 45);
+export const globalRateLimiter = createRateLimiter(
+  process.env.NODE_ENV === "test" ? 1_000 : 100,
+);
+export const strictRateLimiter = createRateLimiter(
+  process.env.NODE_ENV === "test" ? 1_000 : 10,
+  45,
+);

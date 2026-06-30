@@ -33,14 +33,30 @@ function computeScoreDelta(amount: number): number {
   return baseBoost + amountBoost;
 }
 
+const months = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const amounts = [100, 250, 400, 550, 700, 850];
+
 // ── Controllers ──────────────────────────────────────────────────────────────
 
 export const getRemittanceHistory = asyncHandler(
   async (req: Request, res: Response) => {
-    const { userId } = req.params;
+    const { userId } = req.params as { userId: string };
     
     // Fetch real history from DB
-    const { rows: history } = await query(
+    const { rows: dbHistory } = await query(
       "SELECT amount, month, status FROM remittance_history WHERE user_id = $1 ORDER BY created_at DESC", 
       [userId]
     );
@@ -58,16 +74,17 @@ export const getRemittanceHistory = asyncHandler(
       hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
     }
 
-    const history = [0, 1, 2].map((offset) => ({
-      month: months[(hash + offset) % 12],
+    const fallbackHistory = [0, 1, 2].map((offset) => ({
+      month: months[(hash + offset) % months.length],
       amount: amounts[(hash + offset) % amounts.length],
       status: "Completed",
     }));
+    const history = dbHistory.length > 0 ? dbHistory : fallbackHistory;
 
     // Derive score and streak from the history rather than fixed literals.
     const streak = history.length; // all completed
-    const totalPaid = history.reduce((sum, row) => sum + row.amount, 0);
-    const score = Math.min(850, base + Math.floor(totalPaid / 100));
+    const totalPaid = history.reduce((sum, row) => sum + Number(row.amount), 0);
+    score = Math.min(850, score + Math.floor(totalPaid / 100));
 
     res.json({
       userId,
@@ -90,12 +107,13 @@ export const simulatePayment = asyncHandler(
     );
 
     // Simulate score update
-    let oldScore = 500;
+    let oldScore = baseScoreForUser(userId);
     const { rows: scoreRows } = await query("SELECT current_score FROM scores WHERE user_id = $1", [userId]);
     if (scoreRows.length > 0) {
       oldScore = scoreRows[0].current_score;
     }
-    const newScore = Math.min(850, oldScore + 10);
+    const scoreDelta = computeScoreDelta(amount);
+    const newScore = Math.min(850, oldScore + scoreDelta);
     await query(
       `INSERT INTO scores (user_id, current_score, updated_at) 
        VALUES ($1, $2, NOW()) 
@@ -107,6 +125,8 @@ export const simulatePayment = asyncHandler(
     res.json({
       success: true,
       message: `Payment of ${amount} for user ${userId} simulated.`,
+      currentScore: oldScore,
+      scoreDelta,
       newScore,
     });
   },

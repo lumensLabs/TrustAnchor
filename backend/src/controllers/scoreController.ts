@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { query } from "../config/db.js";
+import { scoreStore } from "../lib/scoreStore.js";
 
 // ---------------------------------------------------------------------------
 // Score computation helpers
@@ -14,6 +14,14 @@ function getCreditBand(score: number): CreditBand {
   if (score >= 670) return "Good";
   if (score >= 580) return "Fair";
   return "Poor";
+}
+
+function baseScore(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
+  }
+  return 500 + (hash % 351);
 }
 
 // ---------------------------------------------------------------------------
@@ -38,17 +46,8 @@ const LATE_DELTA = -30;
 export const getScore = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params as { userId: string };
 
-  let score = 500; // Default score
-
-  // Query DB for existing score
-  const { rows } = await query("SELECT current_score FROM scores WHERE user_id = $1", [userId]);
-  if (rows.length > 0) {
-    score = rows[0].current_score;
-  } else {
-    // Insert initial score
-    await query("INSERT INTO scores (user_id, current_score) VALUES ($1, $2)", [userId, score]);
-  }
-
+  const storedScore = await scoreStore.getScore(userId);
+  const score = storedScore?.score ?? baseScore(userId);
   const band = getCreditBand(score);
 
   res.json({
@@ -80,26 +79,16 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     onTime: boolean;
   };
 
-  let oldScore = 500;
-  const { rows: existingRows } = await query("SELECT current_score FROM scores WHERE user_id = $1", [userId]);
-  if (existingRows.length > 0) {
-    oldScore = existingRows[0].current_score;
-  }
-
   const delta = onTime ? ON_TIME_DELTA : LATE_DELTA;
-
-  // Clamp new score within the valid credit-score window [300, 850]
-  const newScore = Math.min(850, Math.max(300, oldScore + delta));
+  const update = await scoreStore.recordRepayment({
+    userId,
+    repaymentAmount,
+    onTime,
+    delta,
+    initialScore: baseScore(userId),
+  });
+  const { oldScore, newScore, timestamp } = update;
   const band = getCreditBand(newScore);
-
-  // Upsert the new score
-  await query(
-    `INSERT INTO scores (user_id, current_score, updated_at) 
-     VALUES ($1, $2, NOW()) 
-     ON CONFLICT (user_id) 
-     DO UPDATE SET current_score = EXCLUDED.current_score, updated_at = NOW()`,
-    [userId, newScore]
-  );
 
   res.json({
     success: true,
@@ -110,5 +99,6 @@ export const updateScore = asyncHandler(async (req: Request, res: Response) => {
     delta,
     newScore,
     band,
+    timestamp,
   });
 });

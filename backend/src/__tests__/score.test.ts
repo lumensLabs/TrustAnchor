@@ -1,10 +1,17 @@
 import request from "supertest";
 import app from "../app.js";
+import { InMemoryScoreStore, scoreStore } from "../lib/scoreStore.js";
 
 const VALID_API_KEY = "test-internal-key";
 
 beforeAll(() => {
   process.env.INTERNAL_API_KEY = VALID_API_KEY;
+});
+
+beforeEach(() => {
+  if (scoreStore instanceof InMemoryScoreStore) {
+    scoreStore.clear();
+  }
 });
 
 afterAll(() => {
@@ -121,6 +128,61 @@ describe("POST /api/score/update", () => {
 
       expect(response.body.userId).toBe("alice");
       expect(response.body.repaymentAmount).toBe(750);
+    });
+
+    it("should persist an update so a later GET returns the new score and band", async () => {
+      const userId = "band-user-87";
+      const initial = await request(app).get(`/api/score/${userId}`);
+
+      expect(initial.status).toBe(200);
+      expect(initial.body.score).toBe(735);
+      expect(initial.body.band).toBe("Good");
+
+      const update = await request(app)
+        .post("/api/score/update")
+        .set("x-api-key", VALID_API_KEY)
+        .send({ userId, repaymentAmount: 500, onTime: true });
+
+      expect(update.status).toBe(200);
+      expect(update.body.oldScore).toBe(735);
+      expect(update.body.delta).toBe(15);
+      expect(update.body.newScore).toBe(750);
+      expect(update.body.band).toBe("Excellent");
+      expect(typeof update.body.timestamp).toBe("string");
+
+      const current = await request(app).get(`/api/score/${userId}`);
+
+      expect(current.status).toBe(200);
+      expect(current.body.score).toBe(750);
+      expect(current.body.band).toBe("Excellent");
+    });
+
+    it("should apply both deltas for concurrent updates to the same user", async () => {
+      const userId = "concurrent-score-user";
+      const initial = await request(app).get(`/api/score/${userId}`);
+
+      const [first, second] = await Promise.all([
+        request(app)
+          .post("/api/score/update")
+          .set("x-api-key", VALID_API_KEY)
+          .send({ userId, repaymentAmount: 100, onTime: true }),
+        request(app)
+          .post("/api/score/update")
+          .set("x-api-key", VALID_API_KEY)
+          .send({ userId, repaymentAmount: 200, onTime: true }),
+      ]);
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+
+      const oldScores = [first.body.oldScore, second.body.oldScore].sort(
+        (a, b) => a - b,
+      );
+      expect(oldScores).toEqual([initial.body.score, initial.body.score + 15]);
+
+      const current = await request(app).get(`/api/score/${userId}`);
+
+      expect(current.body.score).toBe(initial.body.score + 30);
     });
   });
 
