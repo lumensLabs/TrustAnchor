@@ -1,8 +1,15 @@
 use crate::{LendingPool, LendingPoolClient};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::Client as TokenClient;
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{Address, Env};
+
+fn advance_ledgers(env: &Env, ledgers: u32) {
+    env.ledger().with_mut(|li| {
+        li.sequence_number += ledgers;
+        li.timestamp += ledgers as u64 * 5;
+    });
+}
 
 fn create_token_contract<'a>(
     env: &Env,
