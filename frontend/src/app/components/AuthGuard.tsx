@@ -21,11 +21,12 @@ interface AuthGuardProps {
 export function AuthGuard({ children, requireWallet = true }: AuthGuardProps) {
   const router = useRouter();
   const { isAuthenticated, isTokenExpired } = useAuth();
+  const tokenExpired = isTokenExpired();
   const { isConnected } = useWallet();
 
   useEffect(() => {
     // Check if token is expired
-    if (isAuthenticated && isTokenExpired()) {
+    if (isAuthenticated && tokenExpired) {
       router.push("/");
       return;
     }
@@ -41,10 +42,10 @@ export function AuthGuard({ children, requireWallet = true }: AuthGuardProps) {
       router.push("/");
       return;
     }
-  }, [isAuthenticated, isConnected, requireWallet, isTokenExpired, router]);
+  }, [isAuthenticated, isConnected, requireWallet, tokenExpired, router]);
 
   // Show loading state while checking auth
-  if (!isAuthenticated || (requireWallet && !isConnected)) {
+  if (!isAuthenticated || tokenExpired || (requireWallet && !isConnected)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner type="spin" />

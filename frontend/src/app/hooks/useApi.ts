@@ -6,6 +6,13 @@
  * loading states, and error handling built in.
  *
  * Base URL is read from NEXT_PUBLIC_API_URL environment variable.
+ * All paths are prefixed with /api to match the Express backend mount.
+ *
+ * Backend endpoints (from backend/src/app.ts):
+ *   GET  /api/score/:userId       — credit score lookup
+ *   POST /api/score/update        — update score (requires API key)
+ *   GET  /api/history/:userId     — remittance history
+ *   POST /api/simulate            — simulate a payment
  */
 
 import {
@@ -23,36 +30,19 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 /**
  * Centralised query key factory.
  * Using structured keys makes targeted cache invalidation easy.
- *
- * Usage:
- *   queryKeys.loans.all()       → ["loans"]
- *   queryKeys.loans.detail(id)  → ["loans", id]
  */
 export const queryKeys = {
-  loans: {
-    all: () => ["loans"] as const,
-    detail: (id: string) => ["loans", id] as const,
+  score: {
+    detail: (userId: string) => ["score", userId] as const,
   },
-  remittances: {
-    all: () => ["remittances"] as const,
-    detail: (id: string) => ["remittances", id] as const,
-  },
-  user: {
-    profile: () => ["user", "profile"] as const,
-    balance: () => ["user", "balance"] as const,
+  history: {
+    detail: (userId: string) => ["history", userId] as const,
   },
 } as const;
 
 // ─── Base fetch helper ────────────────────────────────────────────────────────
 
 /**
- * Thin fetch wrapper that:
- * - Prepends the API base URL
- * - Handles authentication tokens
- * - Intercepts 401 errors for session expiry
- */
-/**
- * Legacy fetch wrapper (deprecated - use api from apiClient instead)
  * Thin fetch wrapper that:
  * - Prepends the API base URL
  * - Sets JSON Content-Type
@@ -83,183 +73,108 @@ async function apiFetch<T>(
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface Loan {
-  id: string;
+export interface CreditScore {
+  success: boolean;
+  userId: string;
+  score: number;
+  band: string;
+  factors: {
+    repaymentHistory: string;
+    latePaymentPenalty: string;
+    range: string;
+  };
+}
+
+export interface HistoryEntry {
+  month: string;
   amount: number;
-  currency: string;
-  interestRate: number;
-  termDays: number;
-  status: "pending" | "active" | "repaid" | "defaulted";
-  borrowerId: string;
-  createdAt: string;
+  status: string;
 }
 
-export interface Remittance {
-  id: string;
+export interface RemittanceHistory {
+  userId: string;
+  score: number;
+  streak: number;
+  history: HistoryEntry[];
+}
+
+export interface SimulatePaymentInput {
+  userId: string;
   amount: number;
-  fromCurrency: string;
-  toCurrency: string;
-  recipientAddress: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  createdAt: string;
 }
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  walletAddress?: string;
-  kycVerified: boolean;
+export interface SimulatePaymentResult {
+  success: boolean;
+  message: string;
+  newScore: number;
 }
 
-export interface UserBalance {
-  available: number;
-  locked: number;
-  currency: string;
-}
-
-// ─── Loan hooks ───────────────────────────────────────────────────────────────
+// ─── Score hooks ──────────────────────────────────────────────────────────────
 
 /**
- * Fetches all loans.
- * Data is cached for 60s (inherits QueryClient default staleTime).
+ * Fetches a user's credit score from /api/score/:userId.
+ * Only runs when a valid userId is provided.
  */
-export function useLoans(
-  options?: Omit<UseQueryOptions<Loan[]>, "queryKey" | "queryFn">,
+export function useScore(
+  userId: string | undefined,
+  options?: Omit<UseQueryOptions<CreditScore>, "queryKey" | "queryFn">,
 ) {
-  return useQuery<Loan[]>({
-    queryKey: queryKeys.loans.all(),
-    queryFn: () => apiFetch<Loan[]>("/loans"),
+  return useQuery<CreditScore>({
+    queryKey: queryKeys.score.detail(userId ?? ""),
+    queryFn: () => apiFetch<CreditScore>(`/api/score/${userId}`),
+    enabled: !!userId,
     ...options,
   });
 }
 
+// ─── Remittance history hooks ─────────────────────────────────────────────────
+
 /**
- * Fetches a single loan by ID.
- * Only runs when a valid id is provided.
+ * Fetches a user's remittance history from /api/history/:userId.
+ * Returns history, credit score, and streak.
  */
-export function useLoan(
-  id: string | undefined,
-  options?: Omit<UseQueryOptions<Loan>, "queryKey" | "queryFn">,
+export function useHistory(
+  userId: string | undefined,
+  options?: Omit<UseQueryOptions<RemittanceHistory>, "queryKey" | "queryFn">,
 ) {
-  return useQuery<Loan>({
-    queryKey: queryKeys.loans.detail(id ?? ""),
-    queryFn: () => apiFetch<Loan>(`/loans/${id}`),
-    enabled: !!id,
+  return useQuery<RemittanceHistory>({
+    queryKey: queryKeys.history.detail(userId ?? ""),
+    queryFn: () => apiFetch<RemittanceHistory>(`/api/history/${userId}`),
+    enabled: !!userId,
     ...options,
   });
 }
 
+// ─── Simulation hooks ─────────────────────────────────────────────────────────
+
 /**
- * Creates a new loan application.
- * Automatically invalidates the loans list cache on success.
+ * Simulates a payment via POST /api/simulate.
+ * Returns the simulated outcome and new score.
  */
-export function useCreateLoan(
+export function useSimulatePayment(
   options?: UseMutationOptions<
-    Loan,
+    SimulatePaymentResult,
     Error,
-    Omit<Loan, "id" | "createdAt" | "status">
+    SimulatePaymentInput
   >,
 ) {
   const queryClient = useQueryClient();
 
-  return useMutation<Loan, Error, Omit<Loan, "id" | "createdAt" | "status">>({
+  return useMutation<SimulatePaymentResult, Error, SimulatePaymentInput>({
     mutationFn: (data) =>
-      apiFetch<Loan>("/loans", {
+      apiFetch<SimulatePaymentResult>("/api/simulate", {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
-      // Invalidate the loans list so it refetches with the new entry
-      queryClient.invalidateQueries({ queryKey: queryKeys.loans.all() });
+    onSuccess: (_data, variables) => {
+      // Invalidate the user's history and score caches after simulation
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.history.detail(variables.userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.score.detail(variables.userId),
+      });
     },
-    ...options,
-  });
-}
-
-// ─── Remittance hooks ─────────────────────────────────────────────────────────
-
-/**
- * Fetches all remittances.
- */
-export function useRemittances(
-  options?: Omit<UseQueryOptions<Remittance[]>, "queryKey" | "queryFn">,
-) {
-  return useQuery<Remittance[]>({
-    queryKey: queryKeys.remittances.all(),
-    queryFn: () => apiFetch<Remittance[]>("/remittances"),
-    ...options,
-  });
-}
-
-/**
- * Fetches a single remittance by ID.
- */
-export function useRemittance(
-  id: string | undefined,
-  options?: Omit<UseQueryOptions<Remittance>, "queryKey" | "queryFn">,
-) {
-  return useQuery<Remittance>({
-    queryKey: queryKeys.remittances.detail(id ?? ""),
-    queryFn: () => apiFetch<Remittance>(`/remittances/${id}`),
-    enabled: !!id,
-    ...options,
-  });
-}
-
-/**
- * Creates a new remittance.
- * Invalidates the remittances list cache on success.
- */
-export function useCreateRemittance(
-  options?: UseMutationOptions<
-    Remittance,
-    Error,
-    Omit<Remittance, "id" | "createdAt" | "status">
-  >,
-) {
-  const queryClient = useQueryClient();
-
-  return useMutation<
-    Remittance,
-    Error,
-    Omit<Remittance, "id" | "createdAt" | "status">
-  >({
-    mutationFn: (data) =>
-      apiFetch<Remittance>("/remittances", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.remittances.all() });
-    },
-    ...options,
-  });
-}
-
-// ─── User hooks ───────────────────────────────────────────────────────────────
-
-/**
- * Fetches the current user's profile.
- */
-export function useUserProfile(
-  options?: Omit<UseQueryOptions<UserProfile>, "queryKey" | "queryFn">,
-) {
-  return useQuery<UserProfile>({
-    queryKey: queryKeys.user.profile(),
-    queryFn: () => apiFetch<UserProfile>("/user/profile"),
-    ...options,
-  });
-}
-
-/**
- * Fetches the current user's wallet balance.
- */
-export function useUserBalance(
-  options?: Omit<UseQueryOptions<UserBalance>, "queryKey" | "queryFn">,
-) {
-  return useQuery<UserBalance>({
-    queryKey: queryKeys.user.balance(),
-    queryFn: () => apiFetch<UserBalance>("/user/balance"),
     ...options,
   });
 }

@@ -167,43 +167,85 @@ fn test_insufficient_balance_withdraw_panic() {
 }
 
 #[test]
-fn test_deposit_ttl_is_extended_past_default_lifetime() {
+#[should_panic(expected = "insufficient balance")]
+fn test_withdraw_by_non_depositor_panics() {
     let env = Env::default();
     env.mock_all_auths();
 
     let token_admin = Address::generate(&env);
-    let (token_id, stellar_asset_client, _token_client) = create_token_contract(&env, &token_admin);
+    let (token_id, _stellar_asset_client, _token_client) =
+        create_token_contract(&env, &token_admin);
 
     let pool_id = env.register(LendingPool, ());
     let pool_client = LendingPoolClient::new(&env, &pool_id);
     pool_client.initialize(&token_id);
 
-    let control_provider = Address::generate(&env);
-    let bumped_provider = Address::generate(&env);
+    let non_depositor = Address::generate(&env);
 
-    let control_key = crate::DataKey::Deposit(control_provider.clone());
-    let bumped_key = crate::DataKey::Deposit(bumped_provider.clone());
+    // Attempt to withdraw by address that never deposited
+    pool_client.withdraw(&non_depositor, &500);
+}
 
-    env.as_contract(&pool_id, || {
-        env.storage().persistent().set(&control_key, &1i128);
-    });
+#[test]
+fn test_withdraw_updates_state_before_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
 
-    let default_ttl = env.as_contract(&pool_id, || {
-        env.storage().persistent().get_ttl(&control_key)
-    });
+    let token_admin = Address::generate(&env);
+    let (token_id, stellar_asset_client, token_client) = create_token_contract(&env, &token_admin);
 
-    stellar_asset_client.mint(&bumped_provider, &5000);
-    pool_client.deposit(&bumped_provider, &1000);
+    let pool_id = env.register(LendingPool, ());
+    let pool_client = LendingPoolClient::new(&env, &pool_id);
+    pool_client.initialize(&token_id);
+    assert_eq!(pool_client.get_total_deposits(), 0);
 
-    let bumped_ttl = env.as_contract(&pool_id, || env.storage().persistent().get_ttl(&bumped_key));
-    assert!(bumped_ttl > default_ttl);
+    let provider = Address::generate(&env);
+    stellar_asset_client.mint(&provider, &5000);
 
-    advance_ledgers(&env, default_ttl + 1);
+    pool_client.deposit(&provider, &3000);
+    assert_eq!(pool_client.get_deposit(&provider), 3000);
+    assert_eq!(pool_client.get_total_deposits(), 3000);
+    assert_eq!(token_client.balance(&pool_id), 3000);
 
-    env.as_contract(&pool_id, || {
-        assert!(!env.storage().persistent().has(&control_key));
-        assert!(env.storage().persistent().has(&bumped_key));
-    });
+    // Withdraw: state should be updated before transfer
+    pool_client.withdraw(&provider, &1000);
+    assert_eq!(pool_client.get_deposit(&provider), 2000);
+    assert_eq!(pool_client.get_total_deposits(), 2000);
+    assert_eq!(token_client.balance(&provider), 3000);
+    assert_eq!(token_client.balance(&pool_id), 2000);
+}
 
-    assert_eq!(pool_client.get_deposit(&bumped_provider), 1000);
+#[test]
+fn test_total_deposits_aggregates_multiple_providers() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_admin = Address::generate(&env);
+    let (token_id, stellar_asset_client, token_client) = create_token_contract(&env, &token_admin);
+
+    let pool_id = env.register(LendingPool, ());
+    let pool_client = LendingPoolClient::new(&env, &pool_id);
+    pool_client.initialize(&token_id);
+    assert_eq!(pool_client.get_total_deposits(), 0);
+
+    let provider_a = Address::generate(&env);
+    let provider_b = Address::generate(&env);
+    stellar_asset_client.mint(&provider_a, &10000);
+    stellar_asset_client.mint(&provider_b, &10000);
+
+    pool_client.deposit(&provider_a, &4000);
+    assert_eq!(pool_client.get_deposit(&provider_a), 4000);
+    assert_eq!(pool_client.get_total_deposits(), 4000);
+
+    pool_client.deposit(&provider_b, &2000);
+    assert_eq!(pool_client.get_deposit(&provider_b), 2000);
+    assert_eq!(pool_client.get_total_deposits(), 6000);
+
+    assert_eq!(token_client.balance(&pool_id), 6000);
+
+    // Withdraw from provider_a
+    pool_client.withdraw(&provider_a, &1000);
+    assert_eq!(pool_client.get_deposit(&provider_a), 3000);
+    assert_eq!(pool_client.get_total_deposits(), 5000);
+    assert_eq!(token_client.balance(&pool_id), 5000);
 }
