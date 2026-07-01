@@ -121,22 +121,23 @@ export function WalletButton() {
     disconnect,
     clearError,
   } = useWallet();
-  const { logout } = useAuth();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { login, logout } = useAuth();
 
   const handleDisconnect = async () => {
     await disconnect();
     await logout();
   };
 
-  const handleOpenModal = () => {
-    clearError();
-    setIsModalOpen(true);
-  };
-
   const handleConnect = async () => {
     await connect();
-    setIsModalOpen(false);
+
+    const connectedPublicKey = localStorage.getItem("wallet_public_key");
+    if (!connectedPublicKey) {
+      return;
+    }
+
+    const sessionToken = `wallet:${connectedPublicKey}:${Date.now()}`;
+    login(sessionToken, 60 * 60);
   };
 
   if (isConnected && publicKey) {
@@ -163,24 +164,15 @@ export function WalletButton() {
   }
 
   return (
-    <>
-      <div className="flex flex-col items-end gap-2">
-        <Button
-          onClick={handleOpenModal}
-          disabled={isConnecting}
-          aria-label="Connect wallet"
-        >
-          {isConnecting ? "Connecting..." : "Connect Wallet"}
-        </Button>
-      </div>
-
-      <ConnectWalletModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onConnect={handleConnect}
-        isConnecting={isConnecting}
-        error={error}
-      />
-    </>
+    <div className="flex flex-col items-end gap-2">
+      <Button
+        onClick={handleConnect}
+        disabled={isConnecting}
+        aria-label="Connect wallet"
+      >
+        {isConnecting ? "Connecting..." : "Connect Wallet"}
+      </Button>
+      {error && <span className="text-sm text-red-600">{error}</span>}
+    </div>
   );
 }

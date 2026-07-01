@@ -52,10 +52,42 @@ PORT=3001
 # CORS Configuration
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 
+# PostgreSQL (required for migrations)
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/remitlend
+
 # Future: Add API keys for remittance services
 # WISE_API_KEY=your_key_here
 # WESTERN_UNION_API_KEY=your_key_here
 ```
+
+## Database
+
+PostgreSQL is the off-chain data store. Schema changes are managed with [node-pg-migrate](https://github.com/salsita/node-pg-migrate).
+
+```bash
+# Apply all pending migrations
+npm run migrate:up
+
+# Roll back the last migration
+npm run migrate:down
+
+# Create a new migration file
+npm run migrate:create -- migration-name
+```
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `scores` | Cached credit scores keyed by user identifier |
+| `remittance_history` | Off-chain remittance rows for scoring |
+| `user_profiles` | Registered users, KYC fields, and wallet linkage |
+| `loan_histories` | Loan lifecycle cache aligned with on-chain `loan_manager` states |
+| `contract_events` | Indexed Soroban events (`LoanRequested`, `LoanRepaid`, `NftIssued`, etc.) |
+
+Loan statuses: `pending`, `active`, `repaid`, `defaulted` — matching the Soroban contract and frontend types.
+
+TypeScript row shapes live in `src/db/schema.types.ts` for upcoming repository layers.
 
 ## Available Scripts
 
@@ -77,6 +109,10 @@ npm run lint         # Check code quality
 npm run lint:fix     # Fix linting issues
 npm run format       # Format code with Prettier
 npm run format:check # Check code formatting
+
+# Database
+npm run migrate:up   # Apply PostgreSQL migrations
+npm run migrate:down # Roll back last migration
 ```
 
 ## API Endpoints
