@@ -24,13 +24,16 @@ fn test_score_lifecycle() {
     let history_hash = create_test_hash(&env, 1);
 
     // Initial mint (admin mints, so minter is None)
+    assert!(!client.has_nft(&user));
     client.mint(&user, &500, &history_hash, &None);
+    assert!(client.has_nft(&user));
     assert_eq!(client.get_score(&user), 500);
 
     // Check metadata
     let metadata = client.get_metadata(&user).unwrap();
     assert_eq!(metadata.score, 500);
     assert_eq!(metadata.history_hash, history_hash);
+    assert!(!metadata.locked);
 
     // Update score (repayment of 250 -> 2 points) - admin updates
     client.update_score(&user, &250, &None);
@@ -52,6 +55,98 @@ fn test_score_lifecycle() {
     let stranger = Address::generate(&env);
     assert_eq!(client.get_score(&stranger), 0);
     assert!(client.get_metadata(&stranger).is_none());
+    assert!(!client.has_nft(&stranger));
+}
+
+#[test]
+fn test_authorized_contract_mints_nft() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let authorized_minter = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&authorized_minter);
+
+    let history_hash = create_test_hash(&env, 9);
+    client.mint(&user, &720, &history_hash, &Some(authorized_minter));
+
+    assert!(client.has_nft(&user));
+    assert_eq!(client.get_score(&user), 720);
+}
+
+#[test]
+#[should_panic(expected = "remittance NFTs are non-transferable")]
+fn test_transfer_is_blocked() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.mint(&user, &500, &create_test_hash(&env, 1), &None);
+
+    client.transfer(&user, &recipient);
+}
+
+#[test]
+#[should_panic(expected = "score must be between 1 and 1000")]
+fn test_mint_rejects_invalid_score() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.mint(&user, &0, &create_test_hash(&env, 1), &None);
+}
+
+#[test]
+#[should_panic(expected = "history hash must not be zero")]
+fn test_mint_rejects_zero_history_hash() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    let zero_hash = BytesN::from_array(&env, &[0u8; 32]);
+    client.mint(&user, &500, &zero_hash, &None);
+}
+
+#[test]
+#[should_panic(expected = "minter is not authorized")]
+fn test_unauthorized_minter_cannot_mint() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let rogue_minter = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.mint(&user, &500, &create_test_hash(&env, 1), &Some(rogue_minter));
 }
 
 #[test]
