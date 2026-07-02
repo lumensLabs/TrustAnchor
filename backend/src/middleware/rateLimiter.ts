@@ -1,6 +1,20 @@
 import rateLimit from "express-rate-limit";
 
 /**
+ * Parses a positive-integer env var, falling back to `fallback` when unset,
+ * empty, or not a positive integer — so a misconfigured deployment degrades
+ * to a safe known limit instead of an unlimited or NaN window.
+ */
+const parsePositiveInt = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  if (value === undefined || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+/**
  * Builds an express-rate-limit middleware.
  *
  * Keying:
@@ -13,6 +27,10 @@ import rateLimit from "express-rate-limit";
  *   `standardHeaders` emits the IETF draft `RateLimit-*` headers so clients can
  *   see their remaining quota; the deprecated `X-RateLimit-*` headers are
  *   disabled.
+ *
+ * Response body:
+ *   Matches the app-wide error envelope (`{ success: false, message }`) used
+ *   by `errorHandler.ts`, so a 429 looks like every other error response.
  *
  * Store:
  *   This uses express-rate-limit's default in-memory store. That store is
@@ -33,9 +51,49 @@ export const createRateLimiter = (
     max,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: "Too many requests, please try again later." },
+    message: {
+      success: false,
+      message: "Too many requests, please try again later.",
+    },
     ...options,
   });
 
-export const globalRateLimiter = createRateLimiter(100);
-export const strictRateLimiter = createRateLimiter(10, 45);
+// Env-configurable so limits can be tuned per deployment without a code
+// change; falls back to these known-safe defaults when unset or invalid.
+const GLOBAL_MAX = parsePositiveInt(process.env.RATE_LIMIT_MAX, 100);
+const GLOBAL_WINDOW_MINUTES = parsePositiveInt(
+  process.env.RATE_LIMIT_WINDOW_MINUTES,
+  15,
+);
+const STRICT_MAX = parsePositiveInt(process.env.STRICT_RATE_LIMIT_MAX, 10);
+const STRICT_WINDOW_MINUTES = parsePositiveInt(
+  process.env.STRICT_RATE_LIMIT_WINDOW_MINUTES,
+  45,
+);
+const AUTH_MAX = parsePositiveInt(process.env.AUTH_RATE_LIMIT_MAX, 10);
+const AUTH_WINDOW_MINUTES = parsePositiveInt(
+  process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES,
+  15,
+);
+
+export const globalRateLimiter = createRateLimiter(
+  GLOBAL_MAX,
+  GLOBAL_WINDOW_MINUTES,
+);
+export const strictRateLimiter = createRateLimiter(
+  STRICT_MAX,
+  STRICT_WINDOW_MINUTES,
+);
+
+// Separate instances (not `strictRateLimiter`) so brute-force attempts against
+// one auth endpoint can't exhaust the other's quota, and so registration and
+// login are throttled independently of unrelated sensitive endpoints (score
+// updates, simulations) that also use `strictRateLimiter`.
+export const registerRateLimiter = createRateLimiter(
+  AUTH_MAX,
+  AUTH_WINDOW_MINUTES,
+);
+export const loginRateLimiter = createRateLimiter(
+  AUTH_MAX,
+  AUTH_WINDOW_MINUTES,
+);

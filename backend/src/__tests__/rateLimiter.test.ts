@@ -65,6 +65,23 @@ describe("rateLimiter", () => {
     });
   });
 
+  describe("429 response body", () => {
+    it("matches the app-wide { success, message } error envelope", async () => {
+      const app = buildApp(1, 1);
+
+      await request(app).get("/").set("X-Forwarded-For", "5.5.5.5").expect(200);
+      const res = await request(app)
+        .get("/")
+        .set("X-Forwarded-For", "5.5.5.5")
+        .expect(429);
+
+      expect(res.body).toEqual({
+        success: false,
+        message: "Too many requests, please try again later.",
+      });
+    });
+  });
+
   describe("parseTrustProxy", () => {
     it("defaults to false when unset or empty", () => {
       expect(parseTrustProxy(undefined)).toBe(false);
