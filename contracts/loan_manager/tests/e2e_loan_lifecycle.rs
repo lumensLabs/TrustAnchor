@@ -212,3 +212,230 @@ fn test_loan_request_rejected_for_low_reputation_score_end_to_end() {
 
     c.loans.request_loan(&borrower, &1_000);
 }
+
+#[test]
+#[should_panic(expected = "insufficient balance")]
+fn test_loan_disbursement_fails_when_pool_liquidity_insufficient_end_to_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let c = deploy(&env);
+    let liquidity_provider = Address::generate(&env);
+    let borrower = Address::generate(&env);
+
+    c.nft.mint(&borrower, &600, &history_hash(&env, 10), &None);
+
+    // Pool is only capitalized with a fraction of what the loan will require.
+    c.asset_admin.mint(&liquidity_provider, &1_000);
+    c.pool.deposit(&liquidity_provider, &1_000);
+
+    let loan_amount = 5_000i128;
+    let loan_id = c.loans.request_loan(&borrower, &loan_amount);
+    c.loans.approve_loan(&loan_id);
+    assert!(c.nft.is_collateral_locked(&borrower));
+
+    // Attempting to draw more than the pool actually holds must revert; the
+    // loan/collateral state established above is left untouched by the
+    // failed disbursement attempt.
+    c.pool.withdraw(&liquidity_provider, &loan_amount);
+}
+
+#[test]
+fn test_sequential_loans_after_full_repayment_end_to_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let c = deploy(&env);
+    let liquidity_provider = Address::generate(&env);
+    let borrower = Address::generate(&env);
+
+    c.nft.mint(&borrower, &600, &history_hash(&env, 11), &None);
+    c.asset_admin.mint(&liquidity_provider, &50_000);
+    c.pool.deposit(&liquidity_provider, &50_000);
+
+    // --- Loan A: request, approve, disburse, fully repay ---
+    let loan_a_amount = 4_000i128;
+    let loan_a_id = c.loans.request_loan(&borrower, &loan_a_amount);
+    c.loans.approve_loan(&loan_a_id);
+    assert!(c.nft.is_collateral_locked(&borrower));
+    assert_eq!(c.nft.get_collateral_loan(&borrower), Some(loan_a_id));
+
+    c.pool.withdraw(&liquidity_provider, &loan_a_amount);
+    c.token
+        .transfer(&liquidity_provider, &borrower, &loan_a_amount);
+
+    c.loans
+        .repay(&borrower, &(loan_a_id as u32), &loan_a_amount);
+    let loan_a = c.loans.get_loan(&loan_a_id).unwrap();
+    assert_eq!(loan_a.status, LoanStatus::Repaid);
+    assert!(!c.nft.is_collateral_locked(&borrower));
+    assert!(c.nft.get_collateral_loan(&borrower).is_none());
+
+    let pool_balance_after_a = c.pool.get_total_deposits();
+
+    // --- Loan B: the same borrower can borrow again; a fresh id and a
+    //     fresh collateral lock prove the lifecycle is fully repeatable. ---
+    let loan_b_amount = 2_000i128;
+    let loan_b_id = c.loans.request_loan(&borrower, &loan_b_amount);
+    assert_ne!(loan_b_id, loan_a_id);
+    c.loans.approve_loan(&loan_b_id);
+    assert!(c.nft.is_collateral_locked(&borrower));
+    assert_eq!(c.nft.get_collateral_loan(&borrower), Some(loan_b_id));
+
+    c.pool.withdraw(&liquidity_provider, &loan_b_amount);
+    c.token
+        .transfer(&liquidity_provider, &borrower, &loan_b_amount);
+    assert_eq!(
+        c.pool.get_total_deposits(),
+        pool_balance_after_a - loan_b_amount
+    );
+
+    let loan_b = c.loans.get_loan(&loan_b_id).unwrap();
+    assert_eq!(loan_b.status, LoanStatus::Active);
+    assert_eq!(loan_b.outstanding, loan_b_amount);
+}
+
+#[test]
+fn test_multiple_borrowers_share_pool_liquidity_in_isolation_end_to_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let c = deploy(&env);
+    let liquidity_provider = Address::generate(&env);
+    let borrower_a = Address::generate(&env);
+    let borrower_b = Address::generate(&env);
+
+    c.nft
+        .mint(&borrower_a, &600, &history_hash(&env, 20), &None);
+    c.nft
+        .mint(&borrower_b, &700, &history_hash(&env, 21), &None);
+
+    c.asset_admin.mint(&liquidity_provider, &50_000);
+    c.pool.deposit(&liquidity_provider, &50_000);
+
+    let loan_a_amount = 6_000i128;
+    let loan_b_amount = 9_000i128;
+
+    let loan_a_id = c.loans.request_loan(&borrower_a, &loan_a_amount);
+    let loan_b_id = c.loans.request_loan(&borrower_b, &loan_b_amount);
+    assert_ne!(loan_a_id, loan_b_id);
+
+    c.loans.approve_loan(&loan_a_id);
+    c.loans.approve_loan(&loan_b_id);
+
+    // Each borrower's own NFT collateral is locked to their own loan only.
+    assert_eq!(c.nft.get_collateral_loan(&borrower_a), Some(loan_a_id));
+    assert_eq!(c.nft.get_collateral_loan(&borrower_b), Some(loan_b_id));
+
+    c.pool.withdraw(&liquidity_provider, &loan_a_amount);
+    c.token
+        .transfer(&liquidity_provider, &borrower_a, &loan_a_amount);
+    c.pool.withdraw(&liquidity_provider, &loan_b_amount);
+    c.token
+        .transfer(&liquidity_provider, &borrower_b, &loan_b_amount);
+
+    assert_eq!(c.token.balance(&borrower_a), loan_a_amount);
+    assert_eq!(c.token.balance(&borrower_b), loan_b_amount);
+    assert_eq!(
+        c.pool.get_total_deposits(),
+        50_000 - loan_a_amount - loan_b_amount
+    );
+
+    // Borrower A repays in full; borrower B's independent loan/collateral
+    // state must be unaffected.
+    c.loans
+        .repay(&borrower_a, &(loan_a_id as u32), &loan_a_amount);
+    assert_eq!(
+        c.loans.get_loan(&loan_a_id).unwrap().status,
+        LoanStatus::Repaid
+    );
+    assert!(!c.nft.is_collateral_locked(&borrower_a));
+
+    assert_eq!(
+        c.loans.get_loan(&loan_b_id).unwrap().status,
+        LoanStatus::Active
+    );
+    assert!(c.nft.is_collateral_locked(&borrower_b));
+    assert_eq!(c.nft.get_collateral_loan(&borrower_b), Some(loan_b_id));
+}
+
+#[test]
+fn test_reputation_history_hash_persists_independently_of_score_end_to_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let c = deploy(&env);
+    let liquidity_provider = Address::generate(&env);
+    let borrower = Address::generate(&env);
+
+    let initial_hash = history_hash(&env, 30);
+    c.nft.mint(&borrower, &600, &initial_hash, &None);
+
+    c.asset_admin.mint(&liquidity_provider, &50_000);
+    c.pool.deposit(&liquidity_provider, &50_000);
+
+    let loan_amount = 3_000i128;
+    let loan_id = c.loans.request_loan(&borrower, &loan_amount);
+    c.loans.approve_loan(&loan_id);
+    c.pool.withdraw(&liquidity_provider, &loan_amount);
+    c.token
+        .transfer(&liquidity_provider, &borrower, &loan_amount);
+    c.loans.repay(&borrower, &(loan_id as u32), &loan_amount);
+    assert_eq!(
+        c.loans.get_loan(&loan_id).unwrap().status,
+        LoanStatus::Repaid
+    );
+
+    // Reward the repayment in the score, then separately record a new
+    // remittance history hash. The two fields must persist independently.
+    c.nft.update_score(&borrower, &loan_amount, &None);
+    let expected_score = 600 + (loan_amount / 100) as u32;
+    assert_eq!(c.nft.get_score(&borrower), expected_score);
+
+    let new_hash = history_hash(&env, 31);
+    c.nft.update_history_hash(&borrower, &new_hash, &None);
+
+    let metadata = c.nft.get_metadata(&borrower).unwrap();
+    assert_eq!(metadata.score, expected_score);
+    assert_eq!(metadata.history_hash, new_hash);
+    assert_ne!(metadata.history_hash, initial_hash);
+}
+
+#[test]
+fn test_repayment_does_not_move_tokens_on_chain_end_to_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let c = deploy(&env);
+    let liquidity_provider = Address::generate(&env);
+    let borrower = Address::generate(&env);
+
+    c.nft.mint(&borrower, &600, &history_hash(&env, 40), &None);
+    c.asset_admin.mint(&liquidity_provider, &50_000);
+    c.pool.deposit(&liquidity_provider, &50_000);
+
+    let loan_amount = 5_000i128;
+    let loan_id = c.loans.request_loan(&borrower, &loan_amount);
+    c.loans.approve_loan(&loan_id);
+    c.pool.withdraw(&liquidity_provider, &loan_amount);
+    c.token
+        .transfer(&liquidity_provider, &borrower, &loan_amount);
+
+    let borrower_balance_before = c.token.balance(&borrower);
+    let pool_balance_before = c.token.balance(&c.pool_id);
+    let pool_deposits_before = c.pool.get_total_deposits();
+
+    // `LoanManager::repay` is bookkeeping-only today: it updates the loan's
+    // outstanding balance but never calls the token contract. This test
+    // pins that behavior down so a future change that silently starts (or
+    // stops) moving tokens during repayment is caught here.
+    c.loans.repay(&borrower, &(loan_id as u32), &loan_amount);
+
+    assert_eq!(c.token.balance(&borrower), borrower_balance_before);
+    assert_eq!(c.token.balance(&c.pool_id), pool_balance_before);
+    assert_eq!(c.pool.get_total_deposits(), pool_deposits_before);
+    assert_eq!(
+        c.loans.get_loan(&loan_id).unwrap().status,
+        LoanStatus::Repaid
+    );
+}
