@@ -83,10 +83,10 @@ fn test_loan_request_success() {
     assert_eq!(loan_id, 1);
 
     let loan = manager.get_loan(&loan_id).unwrap();
-    assert_eq!(loan.borrower, borrower);
-    assert_eq!(loan.amount, 1000);
-    assert_eq!(loan.outstanding, 1000);
-    assert_eq!(loan.status, LoanStatus::Requested);
+    assert_eq!(loan.1, borrower);
+    assert_eq!(loan.2, 1000);
+    assert_eq!(loan.3, 1000);
+    assert_eq!(loan.5, LoanStatus::Requested);
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn test_approve_loan_flow() {
     manager.approve_loan(&loan_id);
 
     let loan = manager.get_loan(&loan_id).unwrap();
-    assert_eq!(loan.status, LoanStatus::Active);
+    assert_eq!(loan.5, LoanStatus::Active);
 }
 
 // ── Repayment Tests ──
@@ -169,8 +169,8 @@ fn test_partial_repayment_reduces_outstanding() {
     manager.repay(&borrower, &0, &500);
 
     let loan = manager.get_loan(&loan_id).unwrap();
-    assert_eq!(loan.outstanding, 500);
-    assert_eq!(loan.status, LoanStatus::Active);
+    assert_eq!(loan.3, 500);
+    assert_eq!(loan.5, LoanStatus::Active);
 }
 
 #[test]
@@ -187,8 +187,8 @@ fn test_loan_full_repayment_unlocks_collateral() {
     manager.repay(&borrower, &0, &1000);
 
     let loan = manager.get_loan(&loan_id).unwrap();
-    assert_eq!(loan.status, LoanStatus::Repaid);
-    assert_eq!(loan.outstanding, 0);
+    assert_eq!(loan.5, LoanStatus::Repaid);
+    assert_eq!(loan.3, 0);
     assert!(!nft_client.is_locked(&borrower));
 }
 
@@ -235,7 +235,7 @@ fn test_loan_default_liquidates_collateral() {
     manager.default_loan(&loan_id);
 
     let loan = manager.get_loan(&loan_id).unwrap();
-    assert_eq!(loan.status, LoanStatus::Defaulted);
+    assert_eq!(loan.5, LoanStatus::Defaulted);
 
     // NFT should be seized (score gone, not locked)
     assert_eq!(nft_client.get_score(&borrower), 0);
