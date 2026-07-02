@@ -1,19 +1,17 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env};
 
+/// Tuple layout (score, history_hash). Avoids the per-field Symbol keys that a
+/// named-field struct would incur on every persisted NFT entry.
 #[contracttype]
 #[derive(Clone)]
-pub struct RemittanceMetadata {
-    pub score: u32,
-    pub history_hash: BytesN<32>,
-}
+pub struct RemittanceMetadata(pub u32, pub BytesN<32>);
 
+/// Tuple layout (locked, loan_id). Avoids the per-field Symbol keys that a
+/// named-field struct would incur on every persisted collateral entry.
 #[contracttype]
 #[derive(Clone)]
-pub struct CollateralInfo {
-    pub locked: bool,
-    pub loan_id: u64,
-}
+pub struct CollateralInfo(pub bool, pub u64);
 
 #[contracttype]
 #[derive(Clone)]
@@ -21,7 +19,7 @@ pub enum DataKey {
     Metadata(Address),
     Score(Address), // Legacy key for backward compatibility
     Admin,
-    AuthorizedMinter(Address),
+    Minter(Address),
     Collateral(Address), // Track collateral state for each user
 }
 
@@ -38,7 +36,7 @@ impl RemittanceNFT {
         // Admin is automatically authorized to mint
         env.storage()
             .instance()
-            .set(&DataKey::AuthorizedMinter(admin.clone()), &true);
+            .set(&DataKey::Minter(admin.clone()), &true);
     }
 
     /// Authorize a contract or account to mint NFTs
@@ -52,7 +50,7 @@ impl RemittanceNFT {
 
         env.storage()
             .instance()
-            .set(&DataKey::AuthorizedMinter(minter), &true);
+            .set(&DataKey::Minter(minter), &true);
     }
 
     /// Revoke authorization for a contract or account to mint NFTs
@@ -66,14 +64,14 @@ impl RemittanceNFT {
 
         env.storage()
             .instance()
-            .remove(&DataKey::AuthorizedMinter(minter));
+            .remove(&DataKey::Minter(minter));
     }
 
     /// Check if an address is authorized to mint
     pub fn is_authorized_minter(env: Env, minter: Address) -> bool {
         env.storage()
             .instance()
-            .get(&DataKey::AuthorizedMinter(minter))
+            .get(&DataKey::Minter(minter))
             .unwrap_or(false)
     }
 
@@ -100,7 +98,7 @@ impl RemittanceNFT {
             let is_authorized = env
                 .storage()
                 .instance()
-                .get(&DataKey::AuthorizedMinter(minter_addr))
+                .get(&DataKey::Minter(minter_addr))
                 .unwrap_or(false);
             if !is_authorized {
                 panic!("minter is not authorized");
@@ -120,10 +118,7 @@ impl RemittanceNFT {
             panic!("user already has an NFT");
         }
 
-        let metadata = RemittanceMetadata {
-            score: initial_score,
-            history_hash,
-        };
+        let metadata = RemittanceMetadata(initial_score, history_hash);
 
         env.storage().persistent().set(&metadata_key, &metadata);
     }
@@ -140,10 +135,7 @@ impl RemittanceNFT {
         if let Some(score) = env.storage().persistent().get::<DataKey, u32>(&score_key) {
             // Migrate old Score to new Metadata format
             let default_hash = BytesN::from_array(&env, &[0u8; 32]); // Zero hash as default
-            let migrated_metadata = RemittanceMetadata {
-                score,
-                history_hash: default_hash,
-            };
+            let migrated_metadata = RemittanceMetadata(score, default_hash);
             // Store migrated metadata
             env.storage()
                 .persistent()
@@ -160,7 +152,7 @@ impl RemittanceNFT {
     /// Handles backward compatibility by checking Metadata first, then legacy Score data
     pub fn get_score(env: Env, user: Address) -> u32 {
         if let Some(metadata) = Self::get_metadata(env.clone(), user.clone()) {
-            return metadata.score;
+            return metadata.0;
         }
 
         // Check legacy Score data (shouldn't happen after migration, but safe fallback)
@@ -188,7 +180,7 @@ impl RemittanceNFT {
             let is_authorized = env
                 .storage()
                 .instance()
-                .get(&DataKey::AuthorizedMinter(minter_addr))
+                .get(&DataKey::Minter(minter_addr))
                 .unwrap_or(false);
             if !is_authorized {
                 panic!("minter is not authorized");
@@ -207,10 +199,7 @@ impl RemittanceNFT {
         } else if let Some(score) = env.storage().persistent().get::<DataKey, u32>(&score_key) {
             // Migrate legacy Score to Metadata
             let default_hash = BytesN::from_array(&env, &[0u8; 32]);
-            let migrated = RemittanceMetadata {
-                score,
-                history_hash: default_hash,
-            };
+            let migrated = RemittanceMetadata(score, default_hash);
             env.storage().persistent().set(&metadata_key, &migrated);
             env.storage().persistent().remove(&score_key);
             migrated
@@ -220,7 +209,7 @@ impl RemittanceNFT {
 
         // Simple logic: 1 point per 100 units of repayment
         let points = (repayment_amount / 100) as u32;
-        metadata.score += points;
+        metadata.0 += points;
 
         env.storage().persistent().set(&metadata_key, &metadata);
     }
@@ -247,7 +236,7 @@ impl RemittanceNFT {
             let is_authorized = env
                 .storage()
                 .instance()
-                .get(&DataKey::AuthorizedMinter(minter_addr))
+                .get(&DataKey::Minter(minter_addr))
                 .unwrap_or(false);
             if !is_authorized {
                 panic!("minter is not authorized");
@@ -266,10 +255,7 @@ impl RemittanceNFT {
         } else if let Some(score) = env.storage().persistent().get::<DataKey, u32>(&score_key) {
             // Migrate legacy Score to Metadata
             let default_hash = BytesN::from_array(&env, &[0u8; 32]);
-            let migrated = RemittanceMetadata {
-                score,
-                history_hash: default_hash,
-            };
+            let migrated = RemittanceMetadata(score, default_hash);
             env.storage().persistent().set(&metadata_key, &migrated);
             env.storage().persistent().remove(&score_key);
             migrated
@@ -277,7 +263,7 @@ impl RemittanceNFT {
             panic!("user does not have an NFT");
         };
 
-        metadata.history_hash = new_history_hash;
+        metadata.1 = new_history_hash;
 
         env.storage().persistent().set(&metadata_key, &metadata);
     }
@@ -297,7 +283,7 @@ impl RemittanceNFT {
         let is_authorized = env
             .storage()
             .instance()
-            .get(&DataKey::AuthorizedMinter(locker))
+            .get(&DataKey::Minter(locker))
             .unwrap_or(false);
         if !is_authorized {
             panic!("locker is not authorized");
@@ -317,15 +303,12 @@ impl RemittanceNFT {
             .persistent()
             .get::<DataKey, CollateralInfo>(&collateral_key)
         {
-            if collateral.locked {
+            if collateral.0 {
                 panic!("collateral already locked");
             }
         }
 
-        let collateral_info = CollateralInfo {
-            locked: true,
-            loan_id,
-        };
+        let collateral_info = CollateralInfo(true, loan_id);
 
         env.storage()
             .persistent()
@@ -346,7 +329,7 @@ impl RemittanceNFT {
         let is_authorized = env
             .storage()
             .instance()
-            .get(&DataKey::AuthorizedMinter(locker))
+            .get(&DataKey::Minter(locker))
             .unwrap_or(false);
         if !is_authorized {
             panic!("locker is not authorized");
@@ -360,20 +343,17 @@ impl RemittanceNFT {
             .persistent()
             .get::<DataKey, CollateralInfo>(&collateral_key)
         {
-            if !collateral.locked {
+            if !collateral.0 {
                 panic!("collateral is not locked");
             }
-            if collateral.loan_id != loan_id {
+            if collateral.1 != loan_id {
                 panic!("collateral locked for different loan");
             }
         } else {
             panic!("collateral info not found");
         }
 
-        let unlocked_collateral = CollateralInfo {
-            locked: false,
-            loan_id,
-        };
+        let unlocked_collateral = CollateralInfo(false, loan_id);
 
         env.storage()
             .persistent()
@@ -395,7 +375,7 @@ impl RemittanceNFT {
         let is_authorized = env
             .storage()
             .instance()
-            .get(&DataKey::AuthorizedMinter(liquidator))
+            .get(&DataKey::Minter(liquidator))
             .unwrap_or(false);
         if !is_authorized {
             panic!("liquidator is not authorized");
@@ -409,10 +389,10 @@ impl RemittanceNFT {
             .persistent()
             .get::<DataKey, CollateralInfo>(&collateral_key)
         {
-            if !collateral.locked {
+            if !collateral.0 {
                 panic!("collateral is not locked");
             }
-            if collateral.loan_id != loan_id {
+            if collateral.1 != loan_id {
                 panic!("collateral locked for different loan");
             }
         } else {
@@ -431,7 +411,7 @@ impl RemittanceNFT {
             .persistent()
             .get::<DataKey, CollateralInfo>(&collateral_key)
         {
-            return collateral.locked;
+            return collateral.0;
         }
         false
     }
@@ -444,8 +424,8 @@ impl RemittanceNFT {
             .persistent()
             .get::<DataKey, CollateralInfo>(&collateral_key)
         {
-            if collateral.locked {
-                return Some(collateral.loan_id);
+            if collateral.0 {
+                return Some(collateral.1);
             }
         }
         None

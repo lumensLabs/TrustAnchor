@@ -6,17 +6,20 @@ pub mod repayment;
 
 const MIN_SCORE: u32 = 50;
 
+/// Tuple layout (id, borrower, amount, outstanding, interest_rate, status, created_at).
+/// Kept field-name-free so persisted entries serialize as an ScVec instead of an
+/// ScMap with per-field Symbol keys, shrinking the on-chain footprint of every loan.
 #[contracttype]
 #[derive(Clone)]
-pub struct LoanRecord {
-    pub id: u64,
-    pub borrower: Address,
-    pub amount: i128,
-    pub outstanding: i128,
-    pub interest_rate: u32,
-    pub status: LoanStatus,
-    pub created_at: u64,
-}
+pub struct LoanRecord(
+    pub u64,
+    pub Address,
+    pub i128,
+    pub i128,
+    pub u32,
+    pub LoanStatus,
+    pub u64,
+);
 
 #[contracttype]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -91,15 +94,15 @@ impl LoanManager {
         );
 
         // Create loan record
-        let loan = LoanRecord {
-            id: loan_id,
-            borrower: borrower.clone(),
+        let loan = LoanRecord(
+            loan_id,
+            borrower.clone(),
             amount,
-            outstanding: amount,
-            interest_rate: 500, // 5% default
-            status: LoanStatus::Requested,
-            created_at: env.ledger().timestamp(),
-        };
+            amount,
+            500, // 5% default interest rate
+            LoanStatus::Requested,
+            env.ledger().timestamp(),
+        );
 
         env.storage()
             .persistent()
@@ -121,11 +124,11 @@ impl LoanManager {
             .get(&loan_key)
             .expect("loan not found");
 
-        if loan.status != LoanStatus::Requested {
+        if loan.5 != LoanStatus::Requested {
             panic!("loan must be in Requested status");
         }
 
-        loan.status = LoanStatus::Active;
+        loan.5 = LoanStatus::Active;
         env.storage().persistent().set(&loan_key, &loan);
 
         events::loan_approved(&env, loan_id);
@@ -153,7 +156,7 @@ impl LoanManager {
                 .persistent()
                 .get::<DataKey, LoanRecord>(&DataKey::Loan(i))
             {
-                if loan.borrower == borrower && loan.status == LoanStatus::Active {
+                if loan.1 == borrower && loan.5 == LoanStatus::Active {
                     found_loan = Some((i, loan));
                     break;
                 }
@@ -162,15 +165,15 @@ impl LoanManager {
 
         let (loan_id, mut loan) = found_loan.expect("no active loan found");
 
-        if amount > loan.outstanding {
+        if amount > loan.3 {
             panic!("repayment exceeds outstanding amount");
         }
 
-        loan.outstanding -= amount;
+        loan.3 -= amount;
 
         // If fully repaid, unlock collateral
-        if loan.outstanding <= 0 {
-            loan.status = LoanStatus::Repaid;
+        if loan.3 <= 0 {
+            loan.5 = LoanStatus::Repaid;
 
             let nft_contract: Address = env
                 .storage()
@@ -205,11 +208,11 @@ impl LoanManager {
             .get(&loan_key)
             .expect("loan not found");
 
-        if loan.status != LoanStatus::Active {
+        if loan.5 != LoanStatus::Active {
             panic!("loan must be Active to default");
         }
 
-        loan.status = LoanStatus::Defaulted;
+        loan.5 = LoanStatus::Defaulted;
         env.storage().persistent().set(&loan_key, &loan);
 
         // Liquidate collateral
@@ -224,7 +227,7 @@ impl LoanManager {
             &Symbol::new(&env, "liquidate_collateral"),
             soroban_sdk::vec![
                 &env,
-                loan.borrower.clone().into_val(&env),
+                loan.1.clone().into_val(&env),
                 loan_id.into_val(&env),
                 env.current_contract_address().into_val(&env),
             ],

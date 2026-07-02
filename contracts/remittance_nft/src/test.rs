@@ -29,8 +29,8 @@ fn test_score_lifecycle() {
 
     // Check metadata
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 500);
-    assert_eq!(metadata.history_hash, history_hash);
+    assert_eq!(metadata.0, 500);
+    assert_eq!(metadata.1, history_hash);
 
     // Update score (repayment of 250 -> 2 points) - admin updates
     client.update_score(&user, &250, &None);
@@ -38,7 +38,7 @@ fn test_score_lifecycle() {
 
     // Verify metadata updated
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 502);
+    assert_eq!(metadata.0, 502);
 
     // Update score (repayment of 1000 -> 10 points) - admin updates
     client.update_score(&user, &1000, &None);
@@ -46,7 +46,7 @@ fn test_score_lifecycle() {
 
     // Verify metadata updated
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 512);
+    assert_eq!(metadata.0, 512);
 
     // Unregistered user should have 0 score
     let stranger = Address::generate(&env);
@@ -71,15 +71,15 @@ fn test_history_hash_update() {
     client.mint(&user, &500, &initial_hash, &None);
 
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.history_hash, initial_hash);
+    assert_eq!(metadata.1, initial_hash);
 
     // Update history hash - admin updates
     let new_hash = create_test_hash(&env, 2);
     client.update_history_hash(&user, &new_hash, &None);
 
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.history_hash, new_hash);
-    assert_eq!(metadata.score, 500); // Score should remain unchanged
+    assert_eq!(metadata.1, new_hash);
+    assert_eq!(metadata.0, 500); // Score should remain unchanged
 }
 
 #[test]
@@ -254,8 +254,8 @@ fn test_get_metadata_migrates_legacy_score() {
     });
 
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 777);
-    assert_eq!(metadata.history_hash, BytesN::from_array(&env, &[0u8; 32]));
+    assert_eq!(metadata.0, 777);
+    assert_eq!(metadata.1, BytesN::from_array(&env, &[0u8; 32]));
 
     env.as_contract(&contract_id, || {
         assert!(!env.storage().persistent().has(&score_key));
@@ -288,10 +288,10 @@ fn test_backward_compatibility_migration() {
 
     // get_metadata should return migrated metadata with default hash
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 750);
+    assert_eq!(metadata.0, 750);
     // Verify default hash (all zeros)
     let expected_default_hash = BytesN::from_array(&env, &[0u8; 32]);
-    assert_eq!(metadata.history_hash, expected_default_hash);
+    assert_eq!(metadata.1, expected_default_hash);
 
     // Verify old Score key is removed after migration
     env.as_contract(&contract_id, || {
@@ -308,7 +308,7 @@ fn test_backward_compatibility_migration() {
 
     // Verify metadata still exists and is updated
     let updated_metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(updated_metadata.score, 755);
+    assert_eq!(updated_metadata.0, 755);
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn test_update_score_migrates_legacy_data() {
     });
 
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 602);
+    assert_eq!(metadata.0, 602);
 }
 
 #[test]
@@ -374,8 +374,8 @@ fn test_update_history_hash_migrates_legacy_data() {
 
     // Verify migration and update
     let metadata = client.get_metadata(&user).unwrap();
-    assert_eq!(metadata.score, 800); // Score preserved
-    assert_eq!(metadata.history_hash, new_hash); // Hash updated
+    assert_eq!(metadata.0, 800); // Score preserved
+    assert_eq!(metadata.1, new_hash); // Hash updated
 
     // Verify old data is gone
     env.as_contract(&contract_id, || {
