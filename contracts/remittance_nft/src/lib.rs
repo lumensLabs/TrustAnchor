@@ -62,9 +62,7 @@ impl RemittanceNFT {
             .expect("not initialized");
         admin.require_auth();
 
-        env.storage()
-            .instance()
-            .remove(&DataKey::Minter(minter));
+        env.storage().instance().remove(&DataKey::Minter(minter));
     }
 
     /// Check if an address is authorized to mint
