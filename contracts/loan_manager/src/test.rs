@@ -324,3 +324,194 @@ fn test_repayment_overdue_penalty_accrual() {
     assert_eq!(loan.outstanding, 0);
     assert!(!nft_client.is_locked(&borrower));
 }
+
+// ── Additional Comprehensive Lifecycle & Edge Case Tests ──
+
+#[test]
+fn test_loan_request_exact_score_threshold() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &50);
+
+    let loan_id = manager.request_loan(&borrower, &500);
+    assert_eq!(loan_id, 1);
+
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Requested);
+}
+
+#[test]
+#[should_panic(expected = "loan not found")]
+fn test_approve_non_existent_loan_panics() {
+    let (_, manager, _, _) = setup_env();
+    manager.approve_loan(&999);
+}
+
+#[test]
+#[should_panic(expected = "loan must be in Requested status")]
+fn test_approve_already_active_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.approve_loan(&loan_id);
+}
+
+#[test]
+#[should_panic(expected = "loan must be in Requested status")]
+fn test_approve_repaid_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.repay(&borrower, &0, &1000);
+
+    manager.approve_loan(&loan_id);
+}
+
+#[test]
+#[should_panic(expected = "loan must be in Requested status")]
+fn test_approve_defaulted_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.default_loan(&loan_id);
+
+    manager.approve_loan(&loan_id);
+}
+
+#[test]
+fn test_repay_with_explicit_loan_id() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+
+    manager.repay(&borrower, &(loan_id as u32), &1000);
+
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Repaid);
+}
+
+#[test]
+#[should_panic(expected = "no active loan found")]
+fn test_repay_unapproved_requested_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+
+    manager.repay(&borrower, &(loan_id as u32), &500);
+}
+
+#[test]
+#[should_panic(expected = "no active loan found")]
+fn test_repay_already_repaid_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.repay(&borrower, &0, &1000);
+
+    manager.repay(&borrower, &0, &100);
+}
+
+#[test]
+#[should_panic(expected = "no active loan found")]
+fn test_repay_defaulted_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.default_loan(&loan_id);
+
+    manager.repay(&borrower, &0, &500);
+}
+
+#[test]
+#[should_panic(expected = "no active loan found")]
+fn test_repay_non_existent_loan_panics() {
+    let (env, manager, _, _) = setup_env();
+    let borrower = Address::generate(&env);
+
+    manager.repay(&borrower, &999, &500);
+}
+
+#[test]
+#[should_panic(expected = "loan must be Active to default")]
+fn test_cannot_default_already_repaid_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.repay(&borrower, &0, &1000);
+
+    manager.default_loan(&loan_id);
+}
+
+#[test]
+#[should_panic(expected = "loan must be Active to default")]
+fn test_cannot_default_already_defaulted_loan_panics() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+    manager.default_loan(&loan_id);
+
+    manager.default_loan(&loan_id);
+}
+
+#[test]
+#[should_panic(expected = "loan not found")]
+fn test_cannot_default_non_existent_loan_panics() {
+    let (_, manager, _, _) = setup_env();
+    manager.default_loan(&999);
+}
+
+#[test]
+fn test_get_loan_non_existent_returns_none() {
+    let (_, manager, _, _) = setup_env();
+    assert!(manager.get_loan(&999).is_none());
+}
+
+#[test]
+#[should_panic(expected = "loan not found")]
+fn test_get_outstanding_balance_non_existent_panics() {
+    let (_, manager, _, _) = setup_env();
+    manager.get_outstanding_balance(&999);
+}
+
+#[test]
+#[should_panic(expected = "loan not found")]
+fn test_get_repayment_breakdown_non_existent_panics() {
+    let (_, manager, _, _) = setup_env();
+    manager.get_repayment_breakdown(&999);
+}
