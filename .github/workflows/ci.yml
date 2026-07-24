@@ -49,6 +49,15 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: frontend
+      - name: Run unit tests
+        run: npm test
+        working-directory: frontend
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+        working-directory: frontend
+      - name: Run E2E tests
+        run: npm run test:e2e
+        working-directory: frontend
 
   contracts:
     runs-on: ubuntu-latest
