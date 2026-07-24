@@ -1,5 +1,10 @@
 use crate::{LoanManager, LoanManagerClient, LoanStatus};
-use soroban_sdk::{contract, contractimpl, contracttype, testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    contract, contractimpl, contracttype,
+    testutils::{Address as _, Ledger as _},
+    Address, Env,
+};
+
 
 #[contracttype]
 #[derive(Clone)]
@@ -254,3 +259,71 @@ fn test_cannot_default_requested_loan() {
 
     manager.default_loan(&loan_id);
 }
+
+// ── Time-based Interest & Penalty Calculation Tests ──
+
+#[test]
+fn test_repayment_with_interest_accrual_over_time() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &10_000);
+    manager.approve_loan(&loan_id);
+
+    // Initial timestamp is 0. Advance by 30 days (2,592,000 sec), which is due_at date.
+    // Interest = 10,000 * 500 * 2,592,000 / (10,000 * 31,536,000) = 41. Penalty = 0.
+    env.ledger().set_timestamp(2_592_000);
+
+    let balance = manager.get_outstanding_balance(&loan_id);
+    assert_eq!(balance, 10_041);
+
+    let (principal, interest, penalty, total) = manager.get_repayment_breakdown(&loan_id);
+    assert_eq!(principal, 10_000);
+    assert_eq!(interest, 41);
+    assert_eq!(penalty, 0);
+    assert_eq!(total, 10_041);
+
+    // Pay full balance including interest
+    manager.repay(&borrower, &0, &10_041);
+
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Repaid);
+    assert_eq!(loan.outstanding, 0);
+    assert_eq!(loan.total_repaid, 10_041);
+    assert!(!nft_client.is_locked(&borrower));
+}
+
+
+#[test]
+fn test_repayment_overdue_penalty_accrual() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &10_000);
+    manager.approve_loan(&loan_id);
+
+    // Default term is 30 days = 2,592,000 seconds.
+    // Advance ledger time to 1 year + 30 days (31,536,000 + 2,592,000 = 34,128,000s)
+    // Elapsed = 34,128,000s -> Interest rate 5% for 34,128,000s = 541
+    // Overdue = 31,536,000s -> Penalty rate 2% for 31,536,000s = 200
+    env.ledger().set_timestamp(34_128_000);
+
+    let (principal, interest, penalty, total) = manager.get_repayment_breakdown(&loan_id);
+    assert_eq!(principal, 10_000);
+    assert_eq!(interest, 541);
+    assert_eq!(penalty, 200);
+    assert_eq!(total, 10_741);
+
+    // Pay off full debt including penalty and interest
+    manager.repay(&borrower, &0, &10_741);
+
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Repaid);
+    assert_eq!(loan.outstanding, 0);
+    assert!(!nft_client.is_locked(&borrower));
+}
+

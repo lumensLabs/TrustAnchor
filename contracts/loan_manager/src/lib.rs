@@ -16,6 +16,9 @@ pub struct LoanRecord {
     pub interest_rate: u32,
     pub status: LoanStatus,
     pub created_at: u64,
+    pub term_seconds: u64,
+    pub penalty_rate: u32,
+    pub total_repaid: i128,
 }
 
 #[contracttype]
@@ -71,14 +74,12 @@ impl LoanManager {
             panic!("loan amount must be positive");
         }
 
-        // Get and increment next loan ID
         let loan_id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextLoanId)
             .unwrap_or(1);
 
-        // Lock collateral in NFT contract
         let _: () = env.invoke_contract(
             &nft_contract,
             &Symbol::new(&env, "lock_collateral"),
@@ -90,7 +91,6 @@ impl LoanManager {
             ],
         );
 
-        // Create loan record
         let loan = LoanRecord {
             id: loan_id,
             borrower: borrower.clone(),
@@ -99,6 +99,9 @@ impl LoanManager {
             interest_rate: 500, // 5% default
             status: LoanStatus::Requested,
             created_at: env.ledger().timestamp(),
+            term_seconds: 2_592_000, // 30 days default
+            penalty_rate: 200,       // 2% default penalty
+            total_repaid: 0,
         };
 
         env.storage()
@@ -138,37 +141,72 @@ impl LoanManager {
             panic!("repayment amount must be positive");
         }
 
-        // Find active loan for borrower
-        // Note: This is a simplified version. In production, you'd iterate or use a better index
-        let next_loan_id: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextLoanId)
-            .unwrap_or(1);
-
-        let mut found_loan = None;
-        for i in 1..next_loan_id {
-            if let Some(loan) = env
-                .storage()
+        let target_id = _loan_id as u64;
+        let found_loan = if target_id != 0 {
+            env.storage()
                 .persistent()
-                .get::<DataKey, LoanRecord>(&DataKey::Loan(i))
-            {
-                if loan.borrower == borrower && loan.status == LoanStatus::Active {
-                    found_loan = Some((i, loan));
-                    break;
+                .get::<DataKey, LoanRecord>(&DataKey::Loan(target_id))
+                .map(|l| (target_id, l))
+        } else {
+            let next_loan_id: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::NextLoanId)
+                .unwrap_or(1);
+
+            let mut found = None;
+            for i in 1..next_loan_id {
+                if let Some(loan) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, LoanRecord>(&DataKey::Loan(i))
+                {
+                    if loan.borrower == borrower && loan.status == LoanStatus::Active {
+                        found = Some((i, loan));
+                        break;
+                    }
                 }
             }
-        }
+            found
+        };
 
         let (loan_id, mut loan) = found_loan.expect("no active loan found");
 
-        if amount > loan.outstanding {
+        if loan.status != LoanStatus::Active {
+            panic!("no active loan found");
+        }
+
+        let current_time = env.ledger().timestamp();
+        let due_time = loan.created_at.saturating_add(loan.term_seconds);
+
+        let breakdown = repayment::calculate_repayment_breakdown(
+            loan.amount,
+            loan.interest_rate,
+            loan.penalty_rate,
+            loan.created_at,
+            due_time,
+            current_time,
+            loan.total_repaid,
+        );
+
+        if amount > breakdown.total_due {
             panic!("repayment exceeds outstanding amount");
         }
 
-        loan.outstanding -= amount;
+        loan.total_repaid += amount;
 
-        // If fully repaid, unlock collateral
+        let new_breakdown = repayment::calculate_repayment_breakdown(
+            loan.amount,
+            loan.interest_rate,
+            loan.penalty_rate,
+            loan.created_at,
+            due_time,
+            current_time,
+            loan.total_repaid,
+        );
+
+        loan.outstanding = new_breakdown.total_due;
+
         if loan.outstanding <= 0 {
             loan.status = LoanStatus::Repaid;
 
@@ -212,7 +250,6 @@ impl LoanManager {
         loan.status = LoanStatus::Defaulted;
         env.storage().persistent().set(&loan_key, &loan);
 
-        // Liquidate collateral
         let nft_contract: Address = env
             .storage()
             .instance()
@@ -238,7 +275,65 @@ impl LoanManager {
             .persistent()
             .get::<DataKey, LoanRecord>(&DataKey::Loan(loan_id))
     }
+
+    pub fn get_outstanding_balance(env: Env, loan_id: u64) -> i128 {
+        let loan: LoanRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Loan(loan_id))
+            .expect("loan not found");
+
+        if loan.status != LoanStatus::Active {
+            return loan.outstanding;
+        }
+
+        let current_time = env.ledger().timestamp();
+        let due_time = loan.created_at.saturating_add(loan.term_seconds);
+
+        repayment::calculate_repayment_breakdown(
+            loan.amount,
+            loan.interest_rate,
+            loan.penalty_rate,
+            loan.created_at,
+            due_time,
+            current_time,
+            loan.total_repaid,
+        )
+        .total_due
+    }
+
+    pub fn get_repayment_breakdown(
+        env: Env,
+        loan_id: u64,
+    ) -> (i128, i128, i128, i128) {
+        let loan: LoanRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Loan(loan_id))
+            .expect("loan not found");
+
+        let current_time = env.ledger().timestamp();
+        let due_time = loan.created_at.saturating_add(loan.term_seconds);
+
+        let breakdown = repayment::calculate_repayment_breakdown(
+            loan.amount,
+            loan.interest_rate,
+            loan.penalty_rate,
+            loan.created_at,
+            due_time,
+            current_time,
+            loan.total_repaid,
+        );
+
+        (
+            breakdown.principal_remaining,
+            breakdown.accrued_interest,
+            breakdown.penalty_fee,
+            breakdown.total_due,
+        )
+    }
 }
 
 #[cfg(test)]
 mod test;
+
