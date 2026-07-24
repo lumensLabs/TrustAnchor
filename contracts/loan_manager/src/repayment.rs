@@ -25,7 +25,10 @@ pub fn calculate_interest(principal: i128, rate_bps: u32, elapsed_seconds: u64) 
     let rate = rate_bps as i128;
     let time = elapsed_seconds as i128;
 
-    let numerator = match principal.checked_mul(rate).and_then(|val| val.checked_mul(time)) {
+    let numerator = match principal
+        .checked_mul(rate)
+        .and_then(|val| val.checked_mul(time))
+    {
         Some(n) => n,
         None => return 0,
     };
@@ -106,7 +109,6 @@ pub fn calculate_repayment_breakdown(
         total_due,
     }
 }
-
 
 pub fn calculate_outstanding_balance(
     principal: i128,
@@ -190,15 +192,8 @@ mod repayment_tests {
         // 10,000 principal, 5% rate, 2% penalty rate
         // start: 0, due: 31,536,000 (1 yr), current: 63,072,000 (2 yrs -> 2 yrs interest + 1 yr penalty)
         // 2 yrs interest = 1,000. 1 yr penalty = 200. Total gross = 11,200
-        let breakdown = calculate_repayment_breakdown(
-            10_000,
-            500,
-            200,
-            0,
-            31_536_000,
-            63_072_000,
-            0,
-        );
+        let breakdown =
+            calculate_repayment_breakdown(10_000, 500, 200, 0, 31_536_000, 63_072_000, 0);
 
         assert_eq!(breakdown.principal_remaining, 10_000);
         assert_eq!(breakdown.accrued_interest, 1_000);
@@ -212,4 +207,3 @@ mod repayment_tests {
         assert_eq!(allocation.excess_paid, 0);
     }
 }
-

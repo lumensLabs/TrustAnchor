@@ -5,7 +5,6 @@ use soroban_sdk::{
     Address, Env,
 };
 
-
 #[contracttype]
 #[derive(Clone)]
 pub enum MockDataKey {
@@ -295,7 +294,6 @@ fn test_repayment_with_interest_accrual_over_time() {
     assert!(!nft_client.is_locked(&borrower));
 }
 
-
 #[test]
 fn test_repayment_overdue_penalty_accrual() {
     let (env, manager, nft_client, _) = setup_env();
@@ -326,4 +324,3 @@ fn test_repayment_overdue_penalty_accrual() {
     assert_eq!(loan.outstanding, 0);
     assert!(!nft_client.is_locked(&borrower));
 }
-

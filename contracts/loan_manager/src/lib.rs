@@ -302,10 +302,7 @@ impl LoanManager {
         .total_due
     }
 
-    pub fn get_repayment_breakdown(
-        env: Env,
-        loan_id: u64,
-    ) -> (i128, i128, i128, i128) {
+    pub fn get_repayment_breakdown(env: Env, loan_id: u64) -> (i128, i128, i128, i128) {
         let loan: LoanRecord = env
             .storage()
             .persistent()
@@ -336,4 +333,3 @@ impl LoanManager {
 
 #[cfg(test)]
 mod test;
-
