@@ -250,11 +250,13 @@ console.log(process.env.NFT_CONTRACT_ID);
 **Key Methods:**
 - `initialize(admin)` - Initialize contract with admin
 - `authorize_minter(minter)` - Authorize address to mint NFTs
-- `mint_nft(owner, score)` - Mint new NFT with credit score
+- `issue_nft(user, initial_score, history_hash, issuer)` - Issue a remittance NFT with score and history proof
+- `mint(user, initial_score, history_hash, minter)` - Backward-compatible alias for existing integrations
+- `has_nft(user)` - Check whether an address already has an issued NFT
 - `get_score(owner)` - Get credit score for address
-- `update_score(owner, new_score)` - Update credit score
-- `lock_nft(nft_id)` - Lock NFT as collateral
-- `unlock_nft(nft_id)` - Unlock NFT after loan repayment
+- `update_score(owner, repayment_amount, minter)` - Update credit score from repayment activity
+- `lock_collateral(user, loan_id, locker)` - Lock NFT as collateral
+- `unlock_collateral(user, loan_id, locker)` - Unlock NFT after loan repayment
 
 ### Loan Manager Contract
 

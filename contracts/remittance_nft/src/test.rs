@@ -1,11 +1,89 @@
 #![cfg(test)]
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    vec, Address, BytesN, Env, IntoVal, Symbol,
+};
 
 fn create_test_hash(env: &Env, value: u8) -> BytesN<32> {
     let mut hash_bytes = [0u8; 32];
     hash_bytes[0] = value;
     BytesN::from_array(env, &hash_bytes)
+}
+
+#[test]
+fn test_has_nft_is_false_before_issuance() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    assert!(!client.has_nft(&user));
+    assert!(client.get_metadata(&user).is_none());
+    assert_eq!(client.get_score(&user), 0);
+}
+
+#[test]
+fn test_issue_nft_with_authorized_issuer_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.authorize_minter(&issuer);
+
+    let history_hash = create_test_hash(&env, 9);
+    client.issue_nft(&user, &720, &history_hash, &Some(issuer));
+
+    assert!(client.has_nft(&user));
+
+    let metadata = client.get_metadata(&user).unwrap();
+    assert_eq!(metadata.score, 720);
+    assert_eq!(metadata.history_hash, history_hash);
+}
+
+#[test]
+fn test_issue_nft_emits_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let history_hash = create_test_hash(&env, 11);
+    client.issue_nft(&user, &680, &history_hash, &None);
+
+    let expected_topics = (Symbol::new(&env, "NftIssued"), user.clone());
+    let expected_data = (680u32, history_hash);
+
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                contract_id.clone(),
+                expected_topics.into_val(&env),
+                expected_data.into_val(&env),
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -23,9 +101,10 @@ fn test_score_lifecycle() {
 
     let history_hash = create_test_hash(&env, 1);
 
-    // Initial mint (admin mints, so minter is None)
-    client.mint(&user, &500, &history_hash, &None);
+    // Initial issuance (admin issues, so issuer is None)
+    client.issue_nft(&user, &500, &history_hash, &None);
     assert_eq!(client.get_score(&user), 500);
+    assert!(client.has_nft(&user));
 
     // Check metadata
     let metadata = client.get_metadata(&user).unwrap();
@@ -68,7 +147,7 @@ fn test_history_hash_update() {
     client.initialize(&admin);
 
     let initial_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &initial_hash, &None);
+    client.issue_nft(&user, &500, &initial_hash, &None);
 
     let metadata = client.get_metadata(&user).unwrap();
     assert_eq!(metadata.history_hash, initial_hash);
@@ -146,11 +225,11 @@ fn test_duplicate_mint() {
     client.initialize(&admin);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Try to mint again for the same user
     let history_hash2 = create_test_hash(&env, 2);
-    client.mint(&user, &600, &history_hash2, &None);
+    client.issue_nft(&user, &600, &history_hash2, &None);
 }
 
 #[test]
@@ -190,8 +269,8 @@ fn test_update_history_hash_without_nft() {
 }
 
 #[test]
-#[should_panic(expected = "minter is not authorized")]
-fn test_mint_with_unauthorized_minter_panics() {
+#[should_panic(expected = "issuer is not authorized")]
+fn test_issue_nft_with_unauthorized_issuer_panics() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -205,6 +284,25 @@ fn test_mint_with_unauthorized_minter_panics() {
     client.initialize(&admin);
 
     let history_hash = create_test_hash(&env, 7);
+    client.issue_nft(&user, &500, &history_hash, &Some(unauthorized_minter));
+}
+
+#[test]
+#[should_panic(expected = "minter is not authorized")]
+fn test_legacy_mint_with_unauthorized_minter_panics() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let unauthorized_minter = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let history_hash = create_test_hash(&env, 17);
     client.mint(&user, &500, &history_hash, &Some(unauthorized_minter));
 }
 
@@ -225,10 +323,33 @@ fn test_update_with_revoked_minter_panics() {
     client.authorize_minter(&minter);
 
     let history_hash = create_test_hash(&env, 8);
-    client.mint(&user, &500, &history_hash, &Some(minter.clone()));
+    client.issue_nft(&user, &500, &history_hash, &Some(minter.clone()));
 
     client.revoke_minter(&minter);
     client.update_score(&user, &100, &Some(minter));
+}
+
+#[test]
+fn test_legacy_mint_alias_still_issues_nft() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let contract_id = env.register(RemittanceNFT, ());
+    let client = RemittanceNFTClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let history_hash = create_test_hash(&env, 55);
+    client.mint(&user, &640, &history_hash, &None);
+
+    assert!(client.has_nft(&user));
+
+    let metadata = client.get_metadata(&user).unwrap();
+    assert_eq!(metadata.score, 640);
+    assert_eq!(metadata.history_hash, history_hash);
 }
 
 #[test]
@@ -282,6 +403,8 @@ fn test_backward_compatibility_migration() {
     env.as_contract(&contract_id, || {
         env.storage().persistent().set(&score_key, &750u32);
     });
+
+    assert!(client.has_nft(&user));
 
     // get_score should migrate and return the score
     assert_eq!(client.get_score(&user), 750);
@@ -401,7 +524,7 @@ fn test_lock_and_unlock_collateral() {
     client.authorize_minter(&locker);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Initially, collateral should not be locked
     assert!(!client.is_collateral_locked(&user));
@@ -435,7 +558,7 @@ fn test_lock_collateral_already_locked() {
     client.authorize_minter(&locker);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Lock collateral for loan ID 1
     client.lock_collateral(&user, &1, &locker);
@@ -481,7 +604,7 @@ fn test_unlock_unlocked_collateral() {
     client.authorize_minter(&locker);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Try to unlock collateral that was never locked - should panic
     client.unlock_collateral(&user, &1, &locker);
@@ -504,7 +627,7 @@ fn test_unlock_collateral_wrong_loan_id() {
     client.authorize_minter(&locker);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Lock collateral for loan ID 1
     client.lock_collateral(&user, &1, &locker);
@@ -529,7 +652,7 @@ fn test_lock_collateral_unauthorized_locker() {
     client.initialize(&admin);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Try to lock collateral with unauthorized locker - should panic
     client.lock_collateral(&user, &1, &unauthorized_locker);
@@ -551,7 +674,7 @@ fn test_liquidate_collateral() {
     client.authorize_minter(&liquidator);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Lock collateral for loan ID 1
     client.lock_collateral(&user, &1, &liquidator);
@@ -582,7 +705,7 @@ fn test_liquidate_unlocked_collateral() {
     client.authorize_minter(&liquidator);
 
     let history_hash = create_test_hash(&env, 1);
-    client.mint(&user, &500, &history_hash, &None);
+    client.issue_nft(&user, &500, &history_hash, &None);
 
     // Try to liquidate collateral that's not locked - should panic
     client.liquidate_collateral(&user, &1, &liquidator);
