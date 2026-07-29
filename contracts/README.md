@@ -133,41 +133,64 @@ cargo tarpaulin --out Html
 
 ### 1. Remittance NFT Contract
 
-**Purpose**: Mint and manage NFTs representing borrower credit scores.
+**Purpose**: Issue and manage NFTs representing borrower credit scores and remittance history.
 
 **Key Functions**:
 ```rust
 // Initialize the contract
 pub fn initialize(env: Env, admin: Address)
 
-// Mint a new NFT
-pub fn mint_nft(env: Env, owner: Address, score: u32) -> u64
+// Issue a new remittance NFT
+pub fn issue_nft(
+    env: Env,
+    user: Address,
+    initial_score: u32,
+    history_hash: BytesN<32>,
+    issuer: Option<Address>,
+)
 
-// Update credit score
-pub fn update_score(env: Env, nft_id: u64, new_score: u32)
+// Backward-compatible alias for existing integrations
+pub fn mint(
+    env: Env,
+    user: Address,
+    initial_score: u32,
+    history_hash: BytesN<32>,
+    minter: Option<Address>,
+)
+
+// Check whether a wallet already has an issued NFT
+pub fn has_nft(env: Env, user: Address) -> bool
+
+// Read the stored metadata for a wallet
+pub fn get_metadata(env: Env, user: Address) -> Option<RemittanceMetadata>
+
+// Get the credit score for a wallet
+pub fn get_score(env: Env, user: Address) -> u32
+
+// Update credit score after repayment activity
+pub fn update_score(env: Env, user: Address, repayment_amount: i128, minter: Option<Address>)
 
 // Update remittance history hash
-pub fn update_history_hash(env: Env, nft_id: u64, hash: BytesN<32>)
+pub fn update_history_hash(
+    env: Env,
+    user: Address,
+    new_history_hash: BytesN<32>,
+    minter: Option<Address>,
+)
 
-// Get NFT score
-pub fn get_score(env: Env, nft_id: u64) -> u32
-
-// Lock NFT (for loan collateral)
-pub fn lock_nft(env: Env, nft_id: u64)
-
-// Unlock NFT (after loan repayment)
-pub fn unlock_nft(env: Env, nft_id: u64)
+// Lock and unlock NFT collateral by wallet address
+pub fn lock_collateral(env: Env, user: Address, loan_id: u64, locker: Address)
+pub fn unlock_collateral(env: Env, user: Address, loan_id: u64, locker: Address)
 ```
 
 **Storage Keys**:
-- `NFT_COUNTER` - Total NFTs minted
-- `NFT_OWNER_{id}` - NFT ownership mapping
-- `NFT_SCORE_{id}` - Credit score storage
-- `NFT_HASH_{id}` - Remittance history hash
-- `NFT_LOCKED_{id}` - Lock status
+- `Metadata(Address)` - Score plus remittance history hash
+- `Score(Address)` - Legacy score-only storage, auto-migrated on read/write
+- `Collateral(Address)` - Locked collateral state and associated loan ID
+- `AuthorizedMinter(Address)` - Admin-approved issuers / loan manager contracts
 
 **Tests**:
-- ✅ Mint NFT flow
+- ✅ NFT issuance flow
 - ✅ Update score
 - ✅ Update history hash
 - ✅ Lock/unlock NFT

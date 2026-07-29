@@ -1,6 +1,8 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env};
 
+mod events;
+
 #[contracttype]
 #[derive(Clone)]
 pub struct RemittanceMetadata {
@@ -77,10 +79,22 @@ impl RemittanceNFT {
             .unwrap_or(false)
     }
 
-    /// Mint an NFT representing a user's remittance history and reputation score
-    /// Only authorized contracts/accounts can call this function
-    /// If minter is provided, it must be authorized and must authorize the call
-    /// If minter is None, admin must authorize the call
+    /// Issue a remittance NFT for a borrower.
+    /// Only the admin or an authorized issuer can issue an NFT.
+    pub fn issue_nft(
+        env: Env,
+        user: Address,
+        initial_score: u32,
+        history_hash: BytesN<32>,
+        issuer: Option<Address>,
+    ) {
+        let admin = Self::get_admin(&env);
+        Self::require_authorized_actor(&env, &admin, issuer, "issuer is not authorized");
+        Self::issue_nft_internal(env, user, initial_score, history_hash);
+    }
+
+    /// Backward-compatible alias for NFT issuance.
+    /// Existing integrations may still call `mint`, so keep the old entrypoint.
     pub fn mint(
         env: Env,
         user: Address,
@@ -88,44 +102,9 @@ impl RemittanceNFT {
         history_hash: BytesN<32>,
         minter: Option<Address>,
     ) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("not initialized");
-
-        if let Some(minter_addr) = minter {
-            // If minter is provided, require their auth and check authorization
-            minter_addr.require_auth();
-            let is_authorized = env
-                .storage()
-                .instance()
-                .get(&DataKey::AuthorizedMinter(minter_addr))
-                .unwrap_or(false);
-            if !is_authorized {
-                panic!("minter is not authorized");
-            }
-        } else {
-            // If no minter provided, require admin auth
-            admin.require_auth();
-        }
-
-        let metadata_key = DataKey::Metadata(user.clone());
-        let score_key = DataKey::Score(user.clone());
-
-        // Check if user already has an NFT (either new format or legacy)
-        if env.storage().persistent().has(&metadata_key)
-            || env.storage().persistent().has(&score_key)
-        {
-            panic!("user already has an NFT");
-        }
-
-        let metadata = RemittanceMetadata {
-            score: initial_score,
-            history_hash,
-        };
-
-        env.storage().persistent().set(&metadata_key, &metadata);
+        let admin = Self::get_admin(&env);
+        Self::require_authorized_actor(&env, &admin, minter, "minter is not authorized");
+        Self::issue_nft_internal(env, user, initial_score, history_hash);
     }
 
     /// Get the metadata (score and history hash) for a user's NFT
@@ -169,6 +148,15 @@ impl RemittanceNFT {
             .persistent()
             .get::<DataKey, u32>(&score_key)
             .unwrap_or(0)
+    }
+
+    /// Check whether a user already has a remittance NFT.
+    /// Legacy score-only records count as an issued NFT so callers can
+    /// safely gate issuance before migration happens.
+    pub fn has_nft(env: Env, user: Address) -> bool {
+        let metadata_key = DataKey::Metadata(user.clone());
+        let score_key = DataKey::Score(user);
+        env.storage().persistent().has(&metadata_key) || env.storage().persistent().has(&score_key)
     }
 
     /// Update the score for a user's NFT
@@ -453,3 +441,49 @@ impl RemittanceNFT {
 }
 
 mod test;
+
+impl RemittanceNFT {
+    fn issue_nft_internal(env: Env, user: Address, initial_score: u32, history_hash: BytesN<32>) {
+        if Self::has_nft(env.clone(), user.clone()) {
+            panic!("user already has an NFT");
+        }
+
+        let metadata = RemittanceMetadata {
+            score: initial_score,
+            history_hash: history_hash.clone(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Metadata(user.clone()), &metadata);
+        events::nft_issued(&env, user, initial_score, history_hash);
+    }
+
+    fn get_admin(env: &Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized")
+    }
+
+    fn require_authorized_actor(
+        env: &Env,
+        admin: &Address,
+        actor: Option<Address>,
+        unauthorized_message: &str,
+    ) {
+        if let Some(actor_addr) = actor {
+            actor_addr.require_auth();
+            let is_authorized = env
+                .storage()
+                .instance()
+                .get(&DataKey::AuthorizedMinter(actor_addr))
+                .unwrap_or(false);
+            if !is_authorized {
+                panic!("{}", unauthorized_message);
+            }
+        } else {
+            admin.require_auth();
+        }
+    }
+}
