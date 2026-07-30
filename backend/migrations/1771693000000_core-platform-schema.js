@@ -10,7 +10,8 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-    pgm.createExtension("pgcrypto", { ifNotExists: true });
+    // gen_random_uuid() is built into PostgreSQL 13+ — no pgcrypto extension needed.
+    // pgm.createExtension("pgcrypto", { ifNotExists: true });
 
     pgm.createTable("user_profiles", {
         id: {
@@ -124,5 +125,5 @@ export const down = (pgm) => {
     pgm.dropTable("contract_events");
     pgm.dropTable("loan_histories");
     pgm.dropTable("user_profiles");
-    pgm.dropExtension("pgcrypto", { ifExists: true });
+    // pgcrypto not created, so don't drop — gen_random_uuid() is built into PG13+.
 };
