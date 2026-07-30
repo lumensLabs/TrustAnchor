@@ -21,8 +21,18 @@ export const shorthands = undefined;
  */
 export const up = (pgm) => {
     // ── 1. scores.user_id → uuid FK to user_profiles(id) ────────────────
-    // Drop unique constraint so we can change type
-    pgm.dropConstraint("scores", "scores_user_id_unique");
+    // Drop any unique constraint on user_id (PostgreSQL may name it
+    // scores_user_id_unique or scores_user_id_key depending on version).
+    pgm.sql(
+        `DO $$ DECLARE c text; BEGIN
+            SELECT con.conname INTO c FROM pg_constraint con
+            JOIN pg_class rel ON rel.oid = con.conrelid
+            WHERE rel.relname = 'scores' AND con.contype IN ('u','p')
+            AND con.conkey @> (SELECT array_agg(attnum) FROM pg_attribute
+                WHERE attrelid = rel.oid AND attname = 'user_id');
+            IF FOUND THEN EXECUTE 'ALTER TABLE scores DROP CONSTRAINT ' || c; END IF;
+        END $$`,
+    );
 
     // Convert varchar to uuid. Existing rows get NULL — a separate data
     // migration script is needed if there is existing production data.
