@@ -40,9 +40,13 @@ export const errorHandler = (
   }
 
   // ── Unexpected / Programming Errors ──────────────────────────
+  // Verbose internals (stack traces) must never leave the server by
+  // default. They are only included in the response body when
+  // explicitly opted into via NODE_ENV=development - unset or any
+  // other value (including a typo'd "production") stays fail-closed.
   console.error("Unhandled error:", err);
 
-  const isDevelopment = process.env.NODE_ENV !== "production";
+  const isDevelopment = process.env.NODE_ENV === "development";
 
   res.status(500).json({
     success: false,

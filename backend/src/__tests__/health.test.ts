@@ -65,5 +65,7 @@ describe('GET /health', () => {
 
     expect(response.body.status).toBe('error');
     expect(response.body.checks.database.status).toBe('error');
+    expect(response.body.checks.database.message).toBe('Database connection failed');
+    expect(JSON.stringify(response.body)).not.toMatch(/Connection refused/);
   });
 });

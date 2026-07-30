@@ -35,10 +35,13 @@ export async function checkDatabase(
     await pool.query('SELECT 1');
     return { status: 'ok' };
   } catch (error) {
+    // Log the real driver error server-side only. The raw message can
+    // contain connection-string fragments, hostnames, or other driver
+    // internals and must never reach the unauthenticated /health caller.
+    console.error('Database health check failed:', error);
     return {
       status: 'error',
-      message:
-        error instanceof Error ? error.message : 'Database connection failed',
+      message: 'Database connection failed',
     };
   }
 }
