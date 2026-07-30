@@ -1,6 +1,10 @@
 /**
  * TypeScript shapes mirroring PostgreSQL tables from node-pg-migrate.
- * Used by future repository/service layers; not wired to runtime yet.
+ *
+ * `user_profiles` is the canonical identity table after the schema
+ * consolidation migration (1771694000000). The redundant `users` table
+ * was dropped in favour of `user_profiles`, which holds wallet_address
+ * and KYC fields needed by the platform.
  */
 
 export type LoanStatus = "pending" | "active" | "repaid" | "defaulted";
@@ -18,6 +22,22 @@ export interface UserProfileRow {
   kyc_verified: boolean;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface ScoreRow {
+  id: number;
+  user_id: string | null;
+  current_score: number;
+  updated_at: Date;
+}
+
+export interface RemittanceHistoryRow {
+  id: number;
+  user_id: string | null;
+  amount: string;
+  month: string;
+  status: string;
+  created_at: Date;
 }
 
 export interface LoanHistoryRow {

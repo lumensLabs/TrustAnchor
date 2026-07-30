@@ -71,3 +71,68 @@ jobs:
       - name: Run tests
         run: cargo test
         working-directory: contracts
+
+  migration-test:
+    runs-on: ubuntu-latest
+    needs: [backend]
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: remitlend
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Migrate up
+        run: npm run migrate:up
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/remitlend
+
+      - name: Migrate down (all)
+        run: npm run migrate:down
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/remitlend
+
+      - name: Migrate up again (reversibility proof)
+        run: npm run migrate:up
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/remitlend
+
+      - name: Dump foreign-key constraints
+        run: |
+          psql "$DATABASE_URL" -c '\d+ scores'
+          psql "$DATABASE_URL" -c '\d+ loan_histories'
+          psql "$DATABASE_URL" -c '\d+ remittance_history'
+          psql "$DATABASE_URL" -c '\d+ user_profiles'
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/remitlend
+
+      - name: Verify referential integrity (insert with bad user_id must fail)
+        run: |
+          psql "$DATABASE_URL" -c "INSERT INTO scores (user_id, current_score) VALUES ('00000000-0000-0000-0000-000000000000', 500)" 2>&1 | grep -q 'violates foreign key' && echo "PASS: FK rejects invalid user_id" || (echo "FAIL: no FK on scores.user_id"; exit 1)
+          psql "$DATABASE_URL" -c "INSERT INTO loan_histories (user_id, borrower_wallet, amount, currency, interest_rate_bps, term_days, outstanding, status) VALUES ('00000000-0000-0000-0000-000000000000', 'GABC', 1000, 'USD', 500, 30, 1000, 'active')" 2>&1 | grep -q 'violates foreign key' && echo "PASS: FK rejects invalid user_id" || (echo "FAIL: no FK on loan_histories.user_id"; exit 1)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/remitlend
