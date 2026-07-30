@@ -52,17 +52,24 @@ describe('healthService', () => {
       expect(result).toEqual({ status: 'ok' });
     });
 
-    it('should return error when the database query fails', async () => {
+    it('should return a generic error message when the database query fails, without leaking the driver error', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
       const pool = {
         query: jest
           .fn<() => Promise<{ rows: unknown[] }>>()
-          .mockRejectedValue(new Error('Connection refused')),
+          .mockRejectedValue(new Error('Connection refused to postgres://user:pass@internal-host:5432/db')),
       } as unknown as pg.Pool;
 
       const result = await checkDatabase(pool);
 
       expect(result.status).toBe('error');
-      expect(result.message).toBe('Connection refused');
+      expect(result.message).toBe('Database connection failed');
+      expect(result.message).not.toMatch(/postgres:\/\//);
+      expect(result.message).not.toMatch(/internal-host/);
+      // The real error is still logged server-side.
+      expect(consoleErrorSpy).toHaveBeenCalled();
+
+      consoleErrorSpy.mockRestore();
     });
   });
 
