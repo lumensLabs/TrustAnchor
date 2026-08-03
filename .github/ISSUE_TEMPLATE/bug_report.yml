@@ -1,0 +1,59 @@
+name: 🐛 Bug Report
+description: Report a bug to help us improve TrustAnchor
+title: "[BUG] "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the details below.
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Where did the issue occur? (e.g., Backend, Frontend, Contracts)
+      placeholder: Backend / Frontend / Contracts
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clearly describe what went wrong.
+      placeholder: Explain the issue in detail...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: It should...
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Logs
+      description: Add screenshots or error logs if applicable.
+      placeholder: Paste logs or upload images here.
+    validations:
+      required: false
