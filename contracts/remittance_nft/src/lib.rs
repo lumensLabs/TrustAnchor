@@ -440,6 +440,7 @@ impl RemittanceNFT {
     }
 }
 
+#[cfg(test)]
 mod test;
 
 impl RemittanceNFT {

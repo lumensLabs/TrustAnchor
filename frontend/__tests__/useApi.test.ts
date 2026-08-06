@@ -9,7 +9,7 @@ import {
   type CreditScore,
   type RemittanceHistory,
   type SimulatePaymentResult,
-} from "../hooks/useApi";
+} from "@/app/hooks/useApi";
 
 // ─── Test setup ───────────────────────────────────────────────────────────────
 
