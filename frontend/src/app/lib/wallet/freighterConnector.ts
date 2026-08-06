@@ -12,12 +12,13 @@ export interface WalletConnector {
   isConnected: () => Promise<boolean>;
 }
 
-function resolveFreighterClient(): FreighterClient | null {
+export function resolveFreighterClient(): FreighterClient | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const candidate = (window as Window & { freighter?: FreighterClient }).freighter;
+  const candidate = (window as Window & { freighter?: FreighterClient })
+    .freighter;
   return candidate ?? null;
 }
 
@@ -26,15 +27,21 @@ function ensureClient(): FreighterClient {
 
   if (!client) {
     throw new Error(
-      "Freighter wallet was not found. Install Freighter to continue."
+      "Freighter wallet was not found. Install Freighter to continue.",
     );
   }
 
   if (!client.requestAccess || !client.getPublicKey || !client.isConnected) {
-    throw new Error("Freighter wallet API is unavailable in this browser context.");
+    throw new Error(
+      "Freighter wallet API is unavailable in this browser context.",
+    );
   }
 
   return client;
+}
+
+export function isFreighterInstalled(): boolean {
+  return resolveFreighterClient() !== null;
 }
 
 export const freighterConnector: WalletConnector = {
