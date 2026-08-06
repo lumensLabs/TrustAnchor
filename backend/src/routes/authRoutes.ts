@@ -3,6 +3,10 @@ import { register, login, me } from "../controllers/authController.js";
 import { validate } from "../middleware/validation.js";
 import { registerSchema, loginSchema } from "../schemas/authSchemas.js";
 import { requireAuth } from "../middleware/auth.js";
+import {
+  registerRateLimiter,
+  loginRateLimiter,
+} from "../middleware/rateLimiter.js";
 
 const router = Router();
 
@@ -57,7 +61,12 @@ const router = Router();
  *       409:
  *         description: Email already registered.
  */
-router.post("/register", validate(registerSchema), register);
+router.post(
+  "/register",
+  registerRateLimiter,
+  validate(registerSchema),
+  register,
+);
 
 /**
  * @swagger
@@ -109,7 +118,7 @@ router.post("/register", validate(registerSchema), register);
  *       401:
  *         description: Invalid credentials.
  */
-router.post("/login", validate(loginSchema), login);
+router.post("/login", loginRateLimiter, validate(loginSchema), login);
 
 /**
  * @swagger
