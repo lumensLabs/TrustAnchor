@@ -53,9 +53,12 @@ app.get("/", (req: Request, res: Response) => {
 
 app.get("/health", getHealth);
 
+import remittanceRoutes from "./routes/remittanceRoutes.js";
+
 app.use("/api", simulationRoutes);
 app.use("/api/score", scoreRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/remittance", remittanceRoutes);
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
