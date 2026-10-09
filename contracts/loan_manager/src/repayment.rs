@@ -17,24 +17,48 @@ pub struct PaymentAllocation {
     pub excess_paid: i128,
 }
 
+/// Multiply an exact rational quotient/remainder by a positive factor without
+/// constructing the potentially overflowing full numerator.
+///
+/// The pair (whole, remainder) represents (whole * denominator + remainder)
+/// divided by denominator. Because remainder is always smaller than the fixed
+/// interest denominator, remainder * factor is bounded for the u32 rate and
+/// u64 elapsed-time factors used by calculate_interest.
+fn mul_ratio_floor(whole: i128, remainder: i128, factor: i128, denominator: i128) -> (i128, i128) {
+    let scaled_whole = whole
+        .checked_mul(factor)
+        .expect("interest accrual overflow");
+    let scaled_remainder = remainder
+        .checked_mul(factor)
+        .expect("interest accrual overflow");
+    let carry = scaled_remainder / denominator;
+    let next_whole = scaled_whole
+        .checked_add(carry)
+        .expect("interest accrual overflow");
+    let next_remainder = scaled_remainder % denominator;
+    (next_whole, next_remainder)
+}
+
+/// Return floor(principal * rate_bps * elapsed_seconds / (10_000 * seconds/year)).
+///
+/// Interest intentionally rounds down to the smallest contract unit. The
+/// quotient/remainder pipeline avoids overflowing merely because an
+/// intermediate numerator is large. If the final mathematical floor cannot fit
+/// in i128, the function fails loudly with "interest accrual overflow" instead
+/// of silently erasing interest.
 pub fn calculate_interest(principal: i128, rate_bps: u32, elapsed_seconds: u64) -> i128 {
     if principal <= 0 || rate_bps == 0 || elapsed_seconds == 0 {
         return 0;
     }
 
-    let rate = rate_bps as i128;
-    let time = elapsed_seconds as i128;
-
-    let numerator = match principal
-        .checked_mul(rate)
-        .and_then(|val| val.checked_mul(time))
-    {
-        Some(n) => n,
-        None => return 0,
-    };
-
     let denominator = BPS_DENOMINATOR * SECONDS_PER_YEAR;
-    numerator / denominator
+    let mut whole = principal / denominator;
+    let mut remainder = principal % denominator;
+
+    (whole, remainder) = mul_ratio_floor(whole, remainder, rate_bps as i128, denominator);
+    (whole, _) = mul_ratio_floor(whole, remainder, elapsed_seconds as i128, denominator);
+
+    whole
 }
 
 pub fn calculate_penalty(
@@ -73,8 +97,13 @@ pub fn calculate_repayment_breakdown(
     let interest = calculate_interest(principal, rate_bps, elapsed);
     let penalty = calculate_penalty(principal, penalty_rate_bps, due_time, current_time);
 
-    let gross_total = principal.saturating_add(interest).saturating_add(penalty);
-    let net_total = gross_total.saturating_sub(amount_repaid);
+    let gross_total = principal
+        .checked_add(interest)
+        .and_then(|total| total.checked_add(penalty))
+        .expect("repayment total overflow");
+    let net_total = gross_total
+        .checked_sub(amount_repaid)
+        .expect("repayment total overflow");
 
     if net_total <= 0 {
         return RepaymentBreakdown {
@@ -99,8 +128,9 @@ pub fn calculate_repayment_breakdown(
     let principal_remaining = principal - principal_paid;
 
     let total_due = penalty_remaining
-        .saturating_add(interest_remaining)
-        .saturating_add(principal_remaining);
+        .checked_add(interest_remaining)
+        .and_then(|total| total.checked_add(principal_remaining))
+        .expect("repayment total overflow");
 
     RepaymentBreakdown {
         principal_remaining,
@@ -174,6 +204,48 @@ mod repayment_tests {
         assert_eq!(calculate_interest(0, 500, 31_536_000), 0);
         assert_eq!(calculate_interest(10_000, 0, 31_536_000), 0);
         assert_eq!(calculate_interest(10_000, 500, 0), 0);
+    }
+
+    #[test]
+    fn test_interest_boundary_fixtures_and_floor_rounding() {
+        let fixtures = include_str!("../../../../fixtures/interest-boundaries.csv");
+
+        for line in fixtures
+            .lines()
+            .skip(1)
+            .filter(|line| !line.trim().is_empty())
+        {
+            let mut values = line.split(',');
+            let name = values.next().expect("fixture name");
+            let principal: i128 = values
+                .next()
+                .expect("principal")
+                .parse()
+                .expect("principal i128");
+            let rate_bps: u32 = values.next().expect("rate").parse().expect("rate u32");
+            let elapsed_seconds: u64 = values
+                .next()
+                .expect("elapsed")
+                .parse()
+                .expect("elapsed u64");
+            let expected: i128 = values
+                .next()
+                .expect("expected")
+                .parse()
+                .expect("expected i128");
+
+            assert_eq!(
+                calculate_interest(principal, rate_bps, elapsed_seconds),
+                expected,
+                "fixture {name}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "interest accrual overflow")]
+    fn test_unrepresentable_interest_panics_instead_of_returning_zero() {
+        calculate_interest(i128::MAX, 10_000, 63_072_000);
     }
 
     #[test]
