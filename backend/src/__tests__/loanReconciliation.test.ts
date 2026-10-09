@@ -24,11 +24,20 @@ function fixtureRows() {
     .map((line) => {
       const [name, principal, rateBps, elapsedSeconds, expectedFloor] =
         line.split(",");
+      if (
+        name === undefined ||
+        principal === undefined ||
+        rateBps === undefined ||
+        elapsedSeconds === undefined ||
+        expectedFloor === undefined
+      ) {
+        throw new Error(`Malformed interest boundary fixture: ${line}`);
+      }
       return {
         name,
         principal,
         rateBps: Number(rateBps),
-        elapsedSeconds,
+        elapsedSeconds: BigInt(elapsedSeconds),
         expectedFloor,
       };
     });

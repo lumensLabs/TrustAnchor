@@ -24,12 +24,7 @@ pub struct PaymentAllocation {
 /// divided by denominator. Because remainder is always smaller than the fixed
 /// interest denominator, remainder * factor is bounded for the u32 rate and
 /// u64 elapsed-time factors used by calculate_interest.
-fn mul_ratio_floor(
-    whole: i128,
-    remainder: i128,
-    factor: i128,
-    denominator: i128,
-) -> (i128, i128) {
+fn mul_ratio_floor(whole: i128, remainder: i128, factor: i128, denominator: i128) -> (i128, i128) {
     let scaled_whole = whole
         .checked_mul(factor)
         .expect("interest accrual overflow");
@@ -60,18 +55,8 @@ pub fn calculate_interest(principal: i128, rate_bps: u32, elapsed_seconds: u64) 
     let mut whole = principal / denominator;
     let mut remainder = principal % denominator;
 
-    (whole, remainder) = mul_ratio_floor(
-        whole,
-        remainder,
-        rate_bps as i128,
-        denominator,
-    );
-    (whole, _) = mul_ratio_floor(
-        whole,
-        remainder,
-        elapsed_seconds as i128,
-        denominator,
-    );
+    (whole, remainder) = mul_ratio_floor(whole, remainder, rate_bps as i128, denominator);
+    (whole, _) = mul_ratio_floor(whole, remainder, elapsed_seconds as i128, denominator);
 
     whole
 }
@@ -223,17 +208,31 @@ mod repayment_tests {
 
     #[test]
     fn test_interest_boundary_fixtures_and_floor_rounding() {
-        let fixtures = include_str!("../../../fixtures/interest-boundaries.csv");
+        let fixtures = include_str!("../../../../fixtures/interest-boundaries.csv");
 
-        for line in fixtures.lines().skip(1).filter(|line| !line.trim().is_empty()) {
+        for line in fixtures
+            .lines()
+            .skip(1)
+            .filter(|line| !line.trim().is_empty())
+        {
             let mut values = line.split(',');
             let name = values.next().expect("fixture name");
-            let principal: i128 = values.next().expect("principal").parse().expect("principal i128");
+            let principal: i128 = values
+                .next()
+                .expect("principal")
+                .parse()
+                .expect("principal i128");
             let rate_bps: u32 = values.next().expect("rate").parse().expect("rate u32");
-            let elapsed_seconds: u64 =
-                values.next().expect("elapsed").parse().expect("elapsed u64");
-            let expected: i128 =
-                values.next().expect("expected").parse().expect("expected i128");
+            let elapsed_seconds: u64 = values
+                .next()
+                .expect("elapsed")
+                .parse()
+                .expect("elapsed u64");
+            let expected: i128 = values
+                .next()
+                .expect("expected")
+                .parse()
+                .expect("expected i128");
 
             assert_eq!(
                 calculate_interest(principal, rate_bps, elapsed_seconds),

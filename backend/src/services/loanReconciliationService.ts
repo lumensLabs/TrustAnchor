@@ -37,7 +37,7 @@ export class LoanAccrualDiscrepancyError extends Error {
   }
 }
 
-function nonNegativeBigInt(value: string | bigint, field: string): bigint {
+function nonNegativeBigInt(value: string | number | bigint, field: string): bigint {
   let parsed: bigint;
   try {
     parsed = typeof value === "bigint" ? value : BigInt(value);
