@@ -247,6 +247,15 @@ impl LoanManager {
             panic!("loan must be Active to default");
         }
 
+        let due_time = loan.created_at.saturating_add(loan.term_seconds);
+        if env.ledger().timestamp() <= due_time {
+            panic!("loan term has not elapsed");
+        }
+
+        if loan.outstanding <= 0 {
+            panic!("loan has no outstanding balance");
+        }
+
         loan.status = LoanStatus::Defaulted;
         env.storage().persistent().set(&loan_key, &loan);
 

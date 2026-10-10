@@ -236,6 +236,9 @@ fn test_loan_default_liquidates_collateral() {
     let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
 
+    // Advance ledger past loan term (30 days = 2,592,000 sec)
+    env.ledger().set_timestamp(2_592_001);
+
     manager.default_loan(&loan_id);
 
     let loan = manager.get_loan(&loan_id).unwrap();
@@ -257,6 +260,58 @@ fn test_cannot_default_requested_loan() {
     let loan_id = manager.request_loan(&borrower, &1000);
 
     manager.default_loan(&loan_id);
+}
+
+#[test]
+#[should_panic(expected = "loan term has not elapsed")]
+fn test_cannot_default_non_overdue_active_loan() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+
+    // Well inside 30-day term (day 2 = 172,800 sec)
+    env.ledger().set_timestamp(172_800);
+
+    manager.default_loan(&loan_id);
+}
+
+#[test]
+#[should_panic(expected = "loan term has not elapsed")]
+fn test_cannot_default_at_exact_term_boundary() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+
+    // At exact due timestamp (2,592,000 sec)
+    env.ledger().set_timestamp(2_592_000);
+
+    manager.default_loan(&loan_id);
+}
+
+#[test]
+fn test_loan_state_and_collateral_intact_prior_to_expiry() {
+    let (env, manager, nft_client, _) = setup_env();
+
+    let borrower = Address::generate(&env);
+    nft_client.set_score(&borrower, &100);
+
+    let loan_id = manager.request_loan(&borrower, &1000);
+    manager.approve_loan(&loan_id);
+
+    env.ledger().set_timestamp(500_000);
+
+    let loan = manager.get_loan(&loan_id).unwrap();
+    assert_eq!(loan.status, LoanStatus::Active);
+    assert_eq!(loan.outstanding, 1000);
+    assert!(nft_client.is_locked(&borrower));
 }
 
 // ── Time-based Interest & Penalty Calculation Tests ──
@@ -386,6 +441,7 @@ fn test_approve_defaulted_loan_panics() {
 
     let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
+    env.ledger().set_timestamp(2_592_001);
     manager.default_loan(&loan_id);
 
     manager.approve_loan(&loan_id);
@@ -445,6 +501,7 @@ fn test_repay_defaulted_loan_panics() {
 
     let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
+    env.ledger().set_timestamp(2_592_001);
     manager.default_loan(&loan_id);
 
     manager.repay(&borrower, &0, &500);
@@ -484,6 +541,7 @@ fn test_cannot_default_already_defaulted_loan_panics() {
 
     let loan_id = manager.request_loan(&borrower, &1000);
     manager.approve_loan(&loan_id);
+    env.ledger().set_timestamp(2_592_001);
     manager.default_loan(&loan_id);
 
     manager.default_loan(&loan_id);
